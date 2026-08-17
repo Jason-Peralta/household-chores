@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Household Chore Balancer</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f5f5f3; --surface: #fcfcfb; --surface-2: #efefec; --border: #dcdcd7;
+    --text: #0b0b0b; --text-2: #52514e; --text-3: #8a8985;
+    --p1: #2a78d6; --p2: #eb6834; --p3: #1baf7a;
+    --p1-soft: #e3eefb; --p2-soft: #fdeae2; --p3-soft: #e0f5ec;
+    --good: #008300; --warn: #c98500; --bad: #e34948; --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { color-scheme: dark; --bg: #121211; --surface: #1a1a19; --surface-2: #232322; --border: #34342f;
+      --text: #ffffff; --text-2: #c3c2b7; --text-3: #8b8a83; --p1: #3987e5; --p2: #d95926; --p3: #199e70;
+      --p1-soft: #1c2b40; --p2-soft: #3d241a; --p3-soft: #173328; --bad: #e66767; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.4; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 60px; }
+  .topbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 22px; margin: 0; }
+  .sub { color: var(--text-2); margin: 0 0 20px; }
+  h2 { font-size: 15px; margin: 0; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .layout { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .side { order: -1; } }
+  .me { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+  .me .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-weight: 600; color: var(--text); cursor: pointer; }
+  .status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-3); }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+  .status.on .dot { background: var(--good); }
+
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .person { display: flex; flex-direction: column; gap: 8px; }
+  .person-head { display: flex; align-items: center; gap: 8px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .person-name { font-weight: 600; background: transparent; border: none; border-bottom: 1px dashed var(--border); color: var(--text); font-size: 15px; padding: 2px 0; width: 100%; font-family: inherit; }
+  .person-name:focus { outline: none; border-bottom-color: var(--text-2); }
+  .online { width: 7px; height: 7px; border-radius: 50%; background: var(--good); flex-shrink: 0; visibility: hidden; }
+  .online.on { visibility: visible; }
+  .big { font-size: 28px; font-weight: 600; line-height: 1; }
+  .big small { font-size: 12px; font-weight: 400; color: var(--text-2); margin-left: 4px; }
+  .bar-track { height: 10px; background: var(--surface-2); border-radius: 5px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 5px; transition: width .25s; }
+  .meta { color: var(--text-2); font-size: 12px; }
+  .fair { margin-top: 12px; padding: 10px 14px; border-radius: 8px; background: var(--surface-2); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .fair b { font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; align-items: center; }
+  button { font-family: inherit; font-size: 13px; padding: 7px 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+  button:hover { background: var(--surface-2); }
+  button.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+  button.primary:hover { opacity: .88; }
+  button.small { padding: 3px 8px; font-size: 12px; }
+  .spacer { flex: 1; }
+  .hint { color: var(--text-3); font-size: 12px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr.off td { opacity: .45; }
+  tr.off td:first-child, tr.off td:last-child { opacity: 1; }
+  tr.flash td { animation: flash 1.2s ease-out; }
+  @keyframes flash { from { background: var(--p1-soft); } to { background: transparent; } }
+  .name-input { width: 100%; background: transparent; border: none; color: var(--text); font-family: inherit; font-size: 14px; padding: 2px 0; }
+  .name-input:focus { outline: none; border-bottom: 1px solid var(--text-2); }
+  select, input[type=number] { font-family: inherit; font-size: 13px; padding: 5px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  input[type=number] { width: 58px; text-align: center; }
+  select.who { min-width: 118px; font-weight: 500; }
+  select.who.p0 { background: var(--p1-soft); border-color: var(--p1); }
+  select.who.p1 { background: var(--p2-soft); border-color: var(--p2); }
+  select.who.p2 { background: var(--p3-soft); border-color: var(--p3); }
+  select.who.rot { background: var(--surface-2); }
+  .effort { display: inline-flex; gap: 3px; }
+  .effort span { width: 20px; height: 20px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--border); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text-3); user-select: none; }
+  .effort span.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .load { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
+  .del { background: transparent; border: none; color: var(--text-3); cursor: pointer; font-size: 16px; padding: 0 6px; }
+  .del:hover { color: var(--bad); background: transparent; }
+  .add-row td { padding-top: 12px; }
+  .add-row input[type=text] { flex: 1; min-width: 160px; font-family: inherit; font-size: 13px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  .add-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .section-tools { display: flex; align-items: center; justify-content: space-between; margin: 28px 0 10px; }
+
+  /* Activity feed */
+  .side { position: sticky; top: 16px; }
+  .feed { list-style: none; margin: 10px 0 0; padding: 0; max-height: 70vh; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+  .feed li { font-size: 12.5px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); }
+  .feed li b { font-weight: 600; }
+  .feed li .t { display: block; color: var(--text-3); font-size: 11px; margin-top: 2px; }
+  .feed .empty { color: var(--text-3); text-align: center; padding: 20px 0; background: transparent; }
+
+  /* Overlays */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 10; }
+  .overlay.show { display: flex; }
+  .modal { background: var(--surface); border-radius: 12px; padding: 20px; width: min(720px, 100%); max-height: 90vh; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+  .modal h3 { margin: 0; font-size: 16px; }
+  .modal p { margin: 0; }
+  textarea { width: 100%; min-height: 240px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); resize: vertical; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  .who-pick { display: flex; gap: 10px; flex-wrap: wrap; }
+  .who-pick button { flex: 1; padding: 16px; font-size: 16px; font-weight: 600; border-width: 2px; }
+  .who-pick button.p0 { border-color: var(--p1); background: var(--p1-soft); }
+  .who-pick button.p1 { border-color: var(--p2); background: var(--p2-soft); }
+  .who-pick button.p2 { border-color: var(--p3); background: var(--p3-soft); }
+  pre { background: var(--surface-2); padding: 10px; border-radius: 8px; overflow: auto; font-size: 12px; }
+  ol { padding-left: 20px; margin: 0; } ol li { margin-bottom: 6px; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: var(--surface-2); padding: 1px 4px; border-radius: 4px; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; }
+  .toast.show { opacity: 1; }
+  @media (max-width: 720px) { .hide-sm { display: none; } td, th { padding: 6px 4px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>Household Chore Balancer</h1>
+    <div class="me">
+      <span class="status" id="conn"><span class="dot"></span><span id="connText">connecting…</span></span>
+      <span class="pill" id="mePill" title="Click to switch who you are">Who are you?</span>
+    </div>
+  </div>
+  <p class="sub">Shared live with the whole house — every change you make shows up for everyone instantly, and the activity feed shows who changed what.</p>
+
+  <div class="layout">
+    <div>
+      <div class="card">
+        <div class="summary" id="summary"></div>
+        <div class="fair" id="fairness"></div>
+      </div>
+
+      <div class="toolbar">
+        <button class="primary" id="btnAuto">Auto-balance unassigned</button>
+        <button id="btnClear">Clear all assignments</button>
+        <button id="btnReset">Reset to default tasks</button>
+        <span class="spacer"></span>
+        <button id="btnExport">Export</button>
+      </div>
+      <p class="hint">Weekly load = effort (1–5) × times per week. Uncheck a task to leave it out of the plan. "Rotate" splits a task evenly among everyone.</p>
+
+      <div id="sections"></div>
+    </div>
+
+    <aside class="side">
+      <div class="card">
+        <h2>Activity</h2>
+        <ul class="feed" id="feed"><li class="empty">No changes yet</li></ul>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3 id="modalTitle"></h3>
+    <div id="modalBody"></div>
+    <div class="modal-actions" id="modalActions"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+// =====================================================================
+//  SETUP — paste your Firebase web app config here (Project settings →
+//  Your apps → SDK setup and configuration → "Config"). See the setup
+//  panel that appears in the page if this is left blank.
+// =====================================================================
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDmSWISIlqtW7z_GEaAQwDoga7eCUyeYF4",
+  authDomain: "household-chores-73e50.firebaseapp.com",
+  databaseURL: "https://household-chores-73e50-default-rtdb.firebaseio.com",
+  projectId: "household-chores-73e50",
+  storageBucket: "household-chores-73e50.firebasestorage.app",
+  messagingSenderId: "765182965334",
+  appId: "1:765182965334:web:e8e56eeacb2083f220edf7"
+};
+// If you have several households (or want a fresh board), change this key.
+const HOUSE_KEY = "main";
+// =====================================================================
+
+const CATS = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly / As needed' };
+const DEFAULT_PEOPLE = ['Jason', 'Stacy', 'Fabian'];
+const DEFAULT_TASKS = [
+  { cat:'daily',  name:'Wash dishes / load dishwasher',           effort:3, freq:7 },
+  { cat:'daily',  name:'Unload dishwasher / put dishes away',     effort:2, freq:7 },
+  { cat:'daily',  name:'Wipe kitchen counters & stove',           effort:2, freq:7 },
+  { cat:'daily',  name:'Wipe dining table after meals',           effort:1, freq:7 },
+  { cat:'daily',  name:'Sweep kitchen floor',                     effort:2, freq:7 },
+  { cat:'daily',  name:'Take out kitchen trash when full',        effort:2, freq:4 },
+  { cat:'daily',  name:'Tidy living room / common areas',         effort:2, freq:7 },
+  { cat:'daily',  name:'Feed cats — morning',                     effort:1, freq:7 },
+  { cat:'daily',  name:'Feed cats — evening',                     effort:1, freq:7 },
+  { cat:'daily',  name:'Refresh cat water bowls / fountain',      effort:1, freq:7 },
+  { cat:'daily',  name:'Scoop litter boxes',                      effort:2, freq:7 },
+  { cat:'daily',  name:'Sweep litter tracking around boxes',      effort:1, freq:7 },
+  { cat:'daily',  name:'Cat playtime / enrichment',               effort:1, freq:7 },
+  { cat:'daily',  name:'Bring in mail & packages',                effort:1, freq:6 },
+  { cat:'daily',  name:'Wipe bathroom sink / counter',            effort:1, freq:7 },
+  { cat:'daily',  name:'Cook dinner',                             effort:4, freq:7 },
+  { cat:'daily',  name:'Put away groceries / leftovers',          effort:1, freq:7 },
+  { cat:'weekly', name:'Laundry — wash & dry',                    effort:3, freq:1, who:0 },
+  { cat:'weekly', name:'Laundry — fold & put away',               effort:3, freq:1, who:1 },
+  { cat:'weekly', name:'Wash towels & bath mats',                 effort:2, freq:1 },
+  { cat:'weekly', name:'Change bed sheets',                       effort:2, freq:1 },
+  { cat:'weekly', name:'Vacuum carpets & rugs',                   effort:3, freq:1 },
+  { cat:'weekly', name:'Mop hard floors',                         effort:3, freq:1 },
+  { cat:'weekly', name:'Clean bathroom — toilet',                 effort:3, freq:1 },
+  { cat:'weekly', name:'Clean bathroom — shower / tub',           effort:4, freq:1 },
+  { cat:'weekly', name:'Clean bathroom — sink, mirror, floor',    effort:2, freq:1 },
+  { cat:'weekly', name:'Full litter change & wash boxes',         effort:4, freq:1 },
+  { cat:'weekly', name:'Wash cat food & water bowls',             effort:1, freq:2 },
+  { cat:'weekly', name:'Brush cats',                              effort:1, freq:2 },
+  { cat:'weekly', name:'Vacuum cat hair off furniture',           effort:2, freq:1 },
+  { cat:'weekly', name:'Grocery shopping',                        effort:4, freq:1 },
+  { cat:'weekly', name:'Meal planning & grocery list',            effort:2, freq:1 },
+  { cat:'weekly', name:'Trash & recycling to the curb',           effort:2, freq:1 },
+  { cat:'weekly', name:'Bring bins back in',                      effort:1, freq:1 },
+  { cat:'weekly', name:'Clean out fridge / toss old leftovers',   effort:2, freq:1 },
+  { cat:'weekly', name:'Wipe down microwave & appliances',        effort:2, freq:1 },
+  { cat:'weekly', name:'Dust shelves & surfaces',                 effort:2, freq:1 },
+  { cat:'weekly', name:'Water plants',                            effort:1, freq:2 },
+  { cat:'weekly', name:'Empty small trash cans (bath, bedrooms)', effort:1, freq:1 },
+  { cat:'weekly', name:'Sanitize kitchen sink & drain',           effort:2, freq:1 },
+  { cat:'weekly', name:'Restock supplies (TP, soap, cat litter)', effort:2, freq:1 },
+  { cat:'monthly', name:'Deep clean kitchen (oven, cabinets, under appliances)', effort:5, freq:0.25 },
+  { cat:'monthly', name:'Deep clean fridge & freezer',            effort:4, freq:0.25 },
+  { cat:'monthly', name:'Wash windows & mirrors',                 effort:3, freq:0.25 },
+  { cat:'monthly', name:'Vacuum under furniture / baseboards',    effort:3, freq:0.25 },
+  { cat:'monthly', name:'Clean cat fountain filter / trim claws', effort:2, freq:0.5 },
+  { cat:'monthly', name:'Buy cat food & litter (bulk)',           effort:2, freq:0.5 },
+  { cat:'monthly', name:'Replace air filters / smoke detector check', effort:2, freq:0.25 },
+  { cat:'monthly', name:'Pay shared bills / split expenses',      effort:2, freq:0.5 },
+  { cat:'monthly', name:'Vet visits / cat meds',                  effort:3, freq:0.25 },
+];
+// The one place "Fabian does the dishes" is prefilled:
+DEFAULT_TASKS[0].who = 2;
+
+// ---------- Local state (mirrors the database) ----------
+let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {} };
+let me = null;           // index 0..2 of the current user
+let db = null, root = null;
+let feed = [];
+const $ = id => document.getElementById(id);
+const PCOLORS = ['var(--p1)', 'var(--p2)', 'var(--p3)'];
+const load = t => (t.effort || 0) * (t.freq || 0);
+const fmt = n => (Math.round(n * 10) / 10).toString();
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pname = i => i === 'rot' ? 'Rotate' : (i >= 0 ? state.people[i] : 'unassigned');
+function toast(msg) { const el = $('toast'); el.textContent = msg; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 1800); }
+function whoRaw(v) { return v === 'rot' ? 'rot' : (v === undefined || v === null || v === -1 ? -1 : +v); }
+
+// ---------- Firebase wiring ----------
+function configured() { return FIREBASE_CONFIG.databaseURL && FIREBASE_CONFIG.projectId; }
+
+function connect() {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  db = firebase.database();
+  root = db.ref('houses/' + HOUSE_KEY);
+
+  db.ref('.info/connected').on('value', s => {
+    const on = !!s.val();
+    $('conn').classList.toggle('on', on); $('connText').textContent = on ? 'live' : 'offline — reconnecting';
+    if (on && me !== null) setPresence();
+  });
+
+  // Seed once if empty (transaction avoids two people seeding at the same time).
+  root.child('tasks').transaction(cur => {
+    if (cur) return; // already seeded
+    const obj = {};
+    DEFAULT_TASKS.forEach((t, i) => obj['t' + String(i + 1).padStart(3, '0')] = { ...t, on: true, who: t.who ?? -1, order: i });
+    return obj;
+  }).then(() => root.child('people').transaction(cur => cur || DEFAULT_PEOPLE));
+
+  root.child('people').on('value', s => { const v = s.val(); if (Array.isArray(v) && v.length === 3) state.people = v.map(String); render(); });
+  root.child('tasks').on('value', s => {
+    const v = s.val() || {};
+    const prevIds = new Set(state.tasks.map(t => t.id));
+    state.tasks = Object.entries(v).map(([id, t]) => ({ id, ...t, who: whoRaw(t.who), on: t.on !== false }))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    render();
+    // Flash tasks that were changed by someone else in the last event
+    state.tasks.forEach(t => { if (!prevIds.has(t.id) && prevIds.size) flashRow(t.id); });
+  });
+  root.child('presence').on('value', s => { state.presence = s.val() || {}; renderSummary(); });
+  root.child('log').orderByChild('ts').limitToLast(60).on('value', s => {
+    feed = []; s.forEach(c => { feed.push(c.val()); }); feed.reverse(); renderFeed();
+  });
+  root.child('log').orderByChild('ts').limitToLast(1).on('child_added', s => {
+    const e = s.val(); if (e && e.taskId && e.by !== me && Date.now() - e.ts < 15000) flashRow(e.taskId);
+  });
+}
+
+function setPresence() {
+  if (me === null || !root) return;
+  const ref = root.child('presence/' + me);
+  ref.set(true); ref.onDisconnect().set(false);
+}
+
+// Every write goes through here so the change log stays consistent.
+function commit(updates, logText, taskId) {
+  if (me === null) { pickMe(); return; }
+  const u = {};
+  Object.entries(updates).forEach(([k, v]) => u[k] = v);
+  const key = root.child('log').push().key;
+  u['log/' + key] = { by: me, name: state.people[me], text: logText, ts: firebase.database.ServerValue.TIMESTAMP, taskId: taskId || null };
+  root.update(u).catch(e => toast('Save failed: ' + e.message));
+  // Trim the log occasionally so it never grows unbounded.
+  root.child('log').orderByChild('ts').limitToLast(400).once('value', s => {
+    if (s.numChildren() >= 400) root.child('log').orderByChild('ts').limitToFirst(50).once('value', old => { const del = {}; old.forEach(c => del[c.key] = null); root.child('log').update(del); });
+  });
+}
+const T = id => state.tasks.find(t => t.id === id);
+
+// ---------- Actions ----------
+function setWho(id, v) { const t = T(id); const w = whoRaw(v); if (w === t.who) return; commit({ [`tasks/${id}/who`]: w }, `assigned "${t.name}" to ${pname(w)}${t.who !== -1 ? ` (was ${pname(t.who)})` : ''}`, id); }
+function setEffort(id, n) { const t = T(id); if (n === t.effort) return; commit({ [`tasks/${id}/effort`]: n }, `set effort of "${t.name}" to ${n} (was ${t.effort})`, id); }
+function setFreq(id, n) { const t = T(id); if (n === t.freq) return; commit({ [`tasks/${id}/freq`]: n }, `set "${t.name}" to ${n}×/week (was ${t.freq})`, id); }
+function setOn(id, on) { const t = T(id); commit({ [`tasks/${id}/on`]: on }, `${on ? 'included' : 'excluded'} "${t.name}"`, id); }
+function rename(id, name) { const t = T(id); name = name.trim(); if (!name || name === t.name) return render(); commit({ [`tasks/${id}/name`]: name }, `renamed "${t.name}" → "${name}"`, id); }
+function removeTask(id) { const t = T(id); if (!confirm(`Remove "${t.name}"?`)) return; commit({ [`tasks/${id}`]: null }, `removed "${t.name}"`); }
+function addTask(cat, name, effort, freq) {
+  const id = root.child('tasks').push().key;
+  const order = Math.max(0, ...state.tasks.map(t => t.order ?? 0)) + 1;
+  commit({ [`tasks/${id}`]: { cat, name, effort, freq, on: true, who: -1, order } }, `added "${name}" (${CATS[cat]}, effort ${effort})`, id);
+}
+function renamePerson(i, name) { name = name.trim() || DEFAULT_PEOPLE[i]; if (name === state.people[i]) return; commit({ [`people/${i}`]: name }, `renamed ${state.people[i]} → ${name}`); }
+
+$('btnAuto').onclick = () => {
+  const { tot } = totals();
+  const pending = state.tasks.filter(t => t.on && t.who === -1).sort((a, b) => load(b) - load(a));
+  if (!pending.length) return toast('Nothing left to assign');
+  const u = {};
+  for (const t of pending) { const i = tot.indexOf(Math.min(...tot)); u[`tasks/${t.id}/who`] = i; tot[i] += load(t); }
+  commit(u, `auto-balanced ${pending.length} unassigned task${pending.length === 1 ? '' : 's'}`);
+};
+$('btnClear').onclick = () => { if (!confirm('Clear ALL assignments for everyone?')) return; const u = {}; state.tasks.forEach(t => u[`tasks/${t.id}/who`] = -1); commit(u, 'cleared all assignments'); };
+$('btnReset').onclick = () => {
+  if (!confirm('Reset to the default task list for everyone? Custom tasks and assignments will be lost.')) return;
+  const u = { tasks: null };
+  const obj = {}; DEFAULT_TASKS.forEach((t, i) => obj['t' + String(i + 1).padStart(3, '0')] = { ...t, on: true, who: t.who ?? -1, order: i });
+  u.tasks = obj; commit(u, 'reset the board to defaults');
+};
+
+// ---------- Rendering ----------
+function totals() {
+  const tot = state.people.map(() => 0); let unassigned = 0, all = 0;
+  for (const t of state.tasks) { if (!t.on) continue; const l = load(t); all += l;
+    if (t.who === 'rot') tot.forEach((_, i) => tot[i] += l / tot.length); else if (t.who >= 0) tot[t.who] += l; else unassigned += l; }
+  return { tot, unassigned, all };
+}
+function renderSummary() {
+  const { tot, unassigned, all } = totals(); const max = Math.max(...tot, 1);
+  const s = $('summary'); s.innerHTML = '';
+  state.people.forEach((p, i) => {
+    const count = state.tasks.filter(t => t.on && t.who === i).length;
+    const rot = state.tasks.filter(t => t.on && t.who === 'rot').length;
+    const pct = all ? Math.round(tot[i] / all * 100) : 0;
+    const d = document.createElement('div'); d.className = 'person';
+    d.innerHTML = `<div class="person-head"><span class="swatch" style="background:${PCOLORS[i]}"></span>
+        <input class="person-name" value="${esc(p)}" data-i="${i}" aria-label="Person ${i + 1} name">
+        <span class="online ${state.presence[i] ? 'on' : ''}" title="online"></span></div>
+      <div class="big">${fmt(tot[i])}<small>pts / week · ${pct}%${i === me ? ' · you' : ''}</small></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${tot[i] / max * 100}%;background:${PCOLORS[i]}"></div></div>
+      <div class="meta">${count} task${count === 1 ? '' : 's'}${rot ? ` + ${rot} rotating` : ''}</div>`;
+    s.appendChild(d);
+  });
+  s.querySelectorAll('.person-name').forEach(inp => inp.onchange = e => renamePerson(+e.target.dataset.i, e.target.value));
+  const f = $('fairness'); const assigned = all - unassigned;
+  if (!assigned) { f.innerHTML = `<span>Nothing assigned yet — pick names in the table or hit <b>Auto-balance</b>.</span>`; return; }
+  const ideal = all / state.people.length; const spread = Math.max(...tot) - Math.min(...tot); const sp = ideal ? spread / ideal * 100 : 0;
+  const [verdict, color] = sp <= 10 ? ['Nicely balanced', 'var(--good)'] : sp <= 25 ? ['Slightly uneven', 'var(--warn)'] : ['Unbalanced', 'var(--bad)'];
+  const hi = tot.indexOf(Math.max(...tot)), lo = tot.indexOf(Math.min(...tot));
+  f.innerHTML = `<span class="dot" style="background:${color}"></span><b>${verdict}</b>
+    <span>· fair share is <b>${fmt(ideal)}</b> pts each · ${esc(state.people[hi])} carries <b>${fmt(spread)}</b> more than ${esc(state.people[lo])}</span>
+    ${unassigned ? `<span>· <b>${fmt(unassigned)}</b> pts still unassigned</span>` : ''}`;
+  $('mePill').textContent = me === null ? 'Who are you?' : `You: ${state.people[me]}`;
+}
+function whoSelect(t) {
+  const opts = [`<option value="-1" ${t.who === -1 ? 'selected' : ''}>— unassigned —</option>`]
+    .concat(state.people.map((p, i) => `<option value="${i}" ${t.who === i ? 'selected' : ''}>${esc(p)}</option>`))
+    .concat([`<option value="rot" ${t.who === 'rot' ? 'selected' : ''}>Rotate (all)</option>`]);
+  const cls = t.who === 'rot' ? 'rot' : (t.who >= 0 ? 'p' + t.who : '');
+  return `<select class="who ${cls}" data-id="${t.id}">${opts.join('')}</select>`;
+}
+function effortPicker(t) { return `<div class="effort" data-id="${t.id}" title="Effort 1 (easy) to 5 (heavy)">` + [1, 2, 3, 4, 5].map(n => `<span class="${n <= t.effort ? 'on' : ''}" data-v="${n}">${n}</span>`).join('') + `</div>`; }
+function renderSections() {
+  const active = document.activeElement; if (active && active.classList.contains('name-input')) return; // don't clobber typing
+  const root = $('sections'); root.innerHTML = '';
+  for (const key of Object.keys(CATS)) {
+    const tasks = state.tasks.filter(t => t.cat === key);
+    const catLoad = tasks.filter(t => t.on).reduce((a, t) => a + load(t), 0);
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `<div class="section-tools"><h2>${CATS[key]} <span class="hint" style="text-transform:none;letter-spacing:0">· ${tasks.filter(t => t.on).length} tasks · ${fmt(catLoad)} pts/week</span></h2></div>`;
+    const card = document.createElement('div'); card.className = 'card'; card.style.padding = '4px 8px 12px';
+    const rows = tasks.map(t => `
+      <tr class="${t.on ? '' : 'off'}" data-id="${t.id}">
+        <td style="width:34px"><input type="checkbox" class="on" data-id="${t.id}" ${t.on ? 'checked' : ''} aria-label="Include task"></td>
+        <td><input class="name-input" data-id="${t.id}" value="${esc(t.name)}"></td>
+        <td style="width:130px">${effortPicker(t)}</td>
+        <td style="width:80px" class="hide-sm"><input type="number" class="freq" data-id="${t.id}" value="${t.freq}" min="0" step="0.25" aria-label="Times per week"></td>
+        <td style="width:70px" class="load hide-sm">${fmt(load(t))}</td>
+        <td style="width:140px">${whoSelect(t)}</td>
+        <td style="width:34px"><button class="del" data-id="${t.id}" title="Remove task">×</button></td>
+      </tr>`).join('');
+    card.innerHTML = `<table>
+      <thead><tr><th></th><th>Task</th><th>Effort</th><th class="hide-sm">×/week</th><th class="hide-sm" style="text-align:right">Load</th><th>Who</th><th></th></tr></thead>
+      <tbody>${rows}
+        <tr class="add-row"><td colspan="7"><form class="add-form" data-cat="${key}">
+          <input type="text" name="name" placeholder="Add a ${CATS[key].toLowerCase()} task…" required>
+          <label class="hint">Effort <input type="number" name="effort" value="2" min="1" max="5"></label>
+          <label class="hint">×/week <input type="number" name="freq" value="${key === 'daily' ? 7 : key === 'weekly' ? 1 : 0.25}" min="0" step="0.25"></label>
+          <button type="submit" class="small">Add</button></form></td></tr>
+      </tbody></table>`;
+    wrap.appendChild(card); root.appendChild(wrap);
+  }
+  wire();
+}
+function wire() {
+  document.querySelectorAll('input.on').forEach(el => el.onchange = e => setOn(e.target.dataset.id, e.target.checked));
+  document.querySelectorAll('.name-input').forEach(el => el.onchange = e => rename(e.target.dataset.id, e.target.value));
+  document.querySelectorAll('input.freq').forEach(el => el.onchange = e => setFreq(e.target.dataset.id, Math.max(0, parseFloat(e.target.value) || 0)));
+  document.querySelectorAll('select.who').forEach(el => el.onchange = e => setWho(e.target.dataset.id, e.target.value));
+  document.querySelectorAll('.effort span').forEach(el => el.onclick = e => setEffort(e.target.parentElement.dataset.id, +e.target.dataset.v));
+  document.querySelectorAll('button.del').forEach(el => el.onclick = e => removeTask(e.target.dataset.id));
+  document.querySelectorAll('form.add-form').forEach(f => f.onsubmit = e => {
+    e.preventDefault(); const fd = new FormData(f);
+    addTask(f.dataset.cat, fd.get('name').trim(), Math.min(5, Math.max(1, +fd.get('effort') || 2)), Math.max(0, parseFloat(fd.get('freq')) || 0)); f.reset();
+  });
+}
+function flashRow(id) { const tr = document.querySelector(`tr[data-id="${id}"]`); if (!tr) return; tr.classList.remove('flash'); void tr.offsetWidth; tr.classList.add('flash'); }
+function renderFeed() {
+  const ul = $('feed'); if (!feed.length) { ul.innerHTML = '<li class="empty">No changes yet</li>'; return; }
+  ul.innerHTML = feed.map(e => `<li><b>${esc(e.name)}</b> ${esc(e.text)}<span class="t">${ago(e.ts)}</span></li>`).join('');
+}
+function ago(ts) { if (!ts) return ''; const s = (Date.now() - ts) / 1000; if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s / 60)} min ago`; if (s < 86400) return `${Math.floor(s / 3600)} h ago`; return new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+setInterval(renderFeed, 30000);
+function render() { renderSummary(); renderSections(); }
+
+// ---------- Modals ----------
+function openModal(title, bodyHTML, actions, closable = true) {
+  $('modalTitle').textContent = title; $('modalBody').innerHTML = bodyHTML;
+  const a = $('modalActions'); a.innerHTML = '';
+  actions.forEach(([label, fn, primary]) => { const b = document.createElement('button'); b.textContent = label; if (primary) b.className = 'primary'; b.onclick = fn; a.appendChild(b); });
+  if (closable) { const c = document.createElement('button'); c.textContent = 'Close'; c.onclick = closeModal; a.appendChild(c); }
+  $('overlay').classList.add('show'); $('overlay').dataset.closable = closable ? '1' : '';
+}
+function closeModal() { $('overlay').classList.remove('show'); }
+$('overlay').onclick = e => { if (e.target === $('overlay') && $('overlay').dataset.closable) closeModal(); };
+
+function pickMe() {
+  openModal('Who are you?', `<p class="hint">So the activity feed can show who changed what.</p>
+    <div class="who-pick">${state.people.map((p, i) => `<button class="p${i}" data-i="${i}">${esc(p)}</button>`).join('')}</div>`, [], me !== null);
+  $('modalBody').querySelectorAll('button').forEach(b => b.onclick = () => {
+    if (me !== null && root) root.child('presence/' + me).set(false);
+    me = +b.dataset.i; try { localStorage.setItem('chore-me', me); } catch {}
+    setPresence(); closeModal(); render();
+  });
+}
+$('mePill').onclick = pickMe;
+
+function exportText() {
+  const { tot } = totals(); let out = `HOUSEHOLD CHORES — weekly plan\n\n`;
+  state.people.forEach((p, i) => { out += `== ${p} (${fmt(tot[i])} pts/week) ==\n`;
+    for (const key of Object.keys(CATS)) { const ts = state.tasks.filter(t => t.on && t.who === i && t.cat === key);
+      if (ts.length) { out += `  ${CATS[key]}:\n`; ts.forEach(t => out += `    - ${t.name} (effort ${t.effort}${t.freq !== 1 ? `, ${t.freq}×/wk` : ''})\n`); } }
+    out += '\n'; });
+  const rot = state.tasks.filter(t => t.on && t.who === 'rot'); if (rot.length) { out += `== Rotating ==\n`; rot.forEach(t => out += `  - ${t.name}\n`); out += '\n'; }
+  const un = state.tasks.filter(t => t.on && t.who === -1); if (un.length) { out += `== Unassigned ==\n`; un.forEach(t => out += `  - ${t.name}\n`); }
+  return out;
+}
+function exportCSV() {
+  const rows = [['Category', 'Task', 'Effort', 'Times per week', 'Weekly load', 'Assigned to', 'Included']];
+  state.tasks.forEach(t => rows.push([CATS[t.cat], t.name, t.effort, t.freq, fmt(load(t)), t.who === 'rot' ? 'Rotate' : t.who >= 0 ? state.people[t.who] : '', t.on ? 'yes' : 'no']));
+  return rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+}
+function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); }
+$('btnExport').onclick = () => {
+  openModal('Export plan', `<textarea id="exportText" spellcheck="false">${esc(exportText())}</textarea>`, [
+    ['Copy text', () => { const t = $('exportText'); t.select(); navigator.clipboard?.writeText(t.value).then(() => toast('Copied')); }, true],
+    ['Download CSV', () => download('chores.csv', exportCSV(), 'text/csv')],
+  ]);
+};
+
+// ---------- Boot ----------
+if (!configured()) {
+  $('connText').textContent = 'not configured';
+  openModal('One-time setup (about 5 minutes)', `
+    <ol>
+      <li>Go to <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → <b>Add project</b> (any name, Analytics off is fine).</li>
+      <li>In the left menu open <b>Build → Realtime Database → Create database</b>. Pick a location, choose <b>Start in test mode</b> for now.</li>
+      <li>Open the <b>Rules</b> tab and replace the rules with:
+        <pre>{ "rules": { "houses": { ".read": true, ".write": true } } }</pre>
+        (Only people with the page link can read/write, so keep the link within the house.)</li>
+      <li>Project settings (gear icon) → <b>Your apps → Web (&lt;/&gt;)</b> → register an app → copy the <code>firebaseConfig</code> object.</li>
+      <li>Open this HTML file in a text editor and paste those values into <code>FIREBASE_CONFIG</code> near the top of the <code>&lt;script&gt;</code>. Make sure <code>databaseURL</code> is filled in.</li>
+      <li>Host the file for free: drag it onto <a href="https://app.netlify.com/drop" target="_blank">app.netlify.com/drop</a> (no account needed for a quick test; make a free account to keep the URL), or run <code>firebase init hosting</code> + <code>firebase deploy</code>. Share the URL with Stacy and Fabian.</li>
+    </ol>
+    <p class="hint" style="margin-top:10px">Until the config is filled in, this page shows the default list but nothing is saved or shared.</p>`, [], false);
+  render();
+} else {
+  connect();
+  try { const saved = localStorage.getItem('chore-me'); if (saved !== null && +saved >= 0 && +saved < 3) me = +saved; } catch {}
+  render();
+  if (me === null) setTimeout(pickMe, 400); else setPresence();
+}
+</script>
+</body>
+</html>
