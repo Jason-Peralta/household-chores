@@ -298,6 +298,15 @@
   .shopchk { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border); background: var(--surface); flex-shrink: 0; }
   .shopchk:hover { border-color: var(--good); }
 
+  /* ---------- Overdue ---------- */
+  .overdue { background: var(--od-bg) !important; box-shadow: inset 4px 0 0 var(--od); }
+  .ck.overdue, .task.overdue { border-radius: 0; }
+  .odline { font-size: 12px; font-weight: 600; color: var(--od, var(--bad)); margin-top: 2px; }
+  .odcard { margin-bottom: 12px; border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); }
+  .odrow { display: flex; align-items: center; gap: 12px; padding: 9px 14px; border-top: 1px solid var(--border); background: var(--od-bg); }
+  .odrow .odbar { width: 6px; height: 34px; border-radius: 3px; background: var(--od); flex-shrink: 0; }
+  .odrow .nm { font-weight: 600; } .odrow .st { font-size: 12.5px; color: var(--text-2); }
+
   /* ---------- Modal ---------- */
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: flex-end; justify-content: center; z-index: 20; }
   @media (min-width: 600px) { .overlay { align-items: center; padding: 20px; } }
@@ -448,7 +457,7 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 // ============================================================================
 //  State & helpers
 // ============================================================================
-let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {}, members: {}, allChecks: {}, votes: {}, colors: [...DEFAULT_COLORS], prefs: {}, alerts: {}, alertDone: {}, list: {} };
+let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {}, members: {}, allChecks: {}, votes: {}, colors: [...DEFAULT_COLORS], prefs: {}, alerts: {}, alertDone: {}, list: {}, started: null };
 Object.defineProperty(state, 'checks', { get() { return state.allChecks[weekKey(selectedWeekStart())] || {}; } });
 let me = null, user = null, db = null, root = null;
 let feed = [], view = 'week', boardFilter = 'all', ckPerson = null, ckWeekOffset = 0, feedShowChecks = true;
@@ -589,6 +598,8 @@ function boot() {
   let adRef = null, adWeek = null; const subAlertDone = () => { const k = weekKey(new Date()); if (k === adWeek) return; if (adRef) adRef.off(); adWeek = k; adRef = root.child('alertDone/' + k); adRef.on('value', s => { state.alertDone = s.val() || {}; if (view === 'week') render(); }); }; subAlertDone(); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { subAlertDone(); render(); } });
   root.child('list').on('value', s => { state.list = s.val() || {}; if (view === 'week') render(); });
   // seed the one alert the house asked for, once
+  root.child('meta/started').transaction(cur => cur ? undefined : firebase.database.ServerValue.TIMESTAMP).catch(() => {});
+  root.child('meta/started').on('value', s => { state.started = s.val() || null; });
   root.child('meta/alertsSeeded').transaction(cur => cur ? undefined : true).then(r => { if (r && r.committed) root.child('alerts/cardboard').set({ name: 'Cardboard recycling', emoji: '📦', dow: 3, time: '18:00', note: 'Take it out Thursday — pickup is Friday morning', order: 0 }); }).catch(() => {});
   root.child('colors').on('value', s => { const v = s.val() || {}; state.colors = [0, 1, 2].map(i => v[i] || DEFAULT_COLORS[i]); applyColors(state.colors); if (view === 'members') render(); });
   root.child('prefs/' + me).on('value', s => { state.prefs = s.val() || {}; const t = state.prefs.theme; if (t && t !== currentTheme) applyTheme(t); if (view === 'members') render(); });
@@ -623,6 +634,28 @@ function personDayStreak(slot) {
   for (const k of sorted) { const [y, m, d] = k.split('-').map(Number); const t = new Date(y, m - 1, d).getTime(); run = (prev !== null && t - prev === 864e5) ? run + 1 : 1; best = Math.max(best, run); prev = t; }
   return { current: n, best, total: days.size };
 }
+// ---- Overdue: how long since a task was last done vs how often it's supposed to happen ----
+function lastDone(t) {
+  let best = 0;
+  for (const [wk, tasks] of Object.entries(state.allChecks)) { const ch = tasks && tasks[t.id]; if (!ch) continue; for (const d of Object.keys(ch)) { if (!ch[d]) continue; const dt = checkDate(wk, +d); dt.setHours(23, 59, 0, 0); if (dt.getTime() > best) best = dt.getTime(); } }
+  return best || null;
+}
+function intervalDays(t) { return t.freq > 0 ? 7 / t.freq : Infinity; }
+function humanInterval(days) { if (days <= 1) return 'daily'; if (days < 2) return 'most days'; if (Math.abs(days - 3.5) < .6) return 'twice a week'; if (Math.abs(days - 7) < 1) return 'weekly'; if (Math.abs(days - 14) < 2) return 'every 2 weeks'; if (Math.abs(days - 28) < 4) return 'monthly'; return `every ${Math.round(days)} days`; }
+function overdueInfo(t) {
+  if (!t.on || !(t.freq > 0) || t.who === -1) return null; // only tasks someone is responsible for
+  const iv = intervalDays(t); if (!isFinite(iv)) return null;
+  const last = lastDone(t);
+  const base = last || (t.created || state.started || null); if (!base) return null;
+  const days = Math.floor((Date.now() - base) / 864e5); if (days < 0) return null;
+  const late = days - iv; // days past the expected interval
+  const grace = iv <= 1 ? 1 : Math.max(1, iv * 0.5); // daily: 1 day grace; weekly: ~3.5 days
+  if (late < grace) return null;
+  const sev = Math.min(1, late / (iv * 3 + 2)); // 0 → just late, 1 → very late
+  const txt = last ? `Not done in ${days} day${days === 1 ? '' : 's'}` : `Never done (${days} days)`;
+  return { days, iv, sev, text: `${txt} · usually ${humanInterval(iv)}` };
+}
+function overdueStyle(o) { if (!o) return ''; const mix = Math.round(30 + o.sev * 70); return `--od: color-mix(in srgb, var(--bad) ${mix}%, var(--warn)); --od-bg: color-mix(in srgb, var(--od) ${Math.round(6 + o.sev * 12)}%, var(--surface));`; }
 function taskStreak(t) {
   const tgt = targetFor(t);
   if (tgt >= 5) { // daily-ish: consecutive days
@@ -660,7 +693,7 @@ function setFreq(id, n) { const t = T(id); if (n === t.freq) return; commit({ [`
 function setOn(id, on) { const t = T(id); commit({ [`tasks/${id}/on`]: on }, `${on ? 'included' : 'excluded'} "${t.name}"`, id); }
 function renameTask(id, name) { const t = T(id); name = name.trim(); if (!name || name === t.name) return render(); commit({ [`tasks/${id}/name`]: name }, `renamed "${t.name}" → "${name}"`, id); }
 function removeTask(id) { const t = T(id); confirmModal(`Remove "${t.name}"?`, 'This removes it for everyone. Past check-offs are kept.', () => commit({ [`tasks/${id}`]: null }, `removed "${t.name}"`)); }
-function addTask(cat, name, effort, freq) { const id = root.child('tasks').push().key; const order = Math.max(0, ...state.tasks.map(t => t.order ?? 0)) + 1; commit({ [`tasks/${id}`]: { cat, name, effort, freq, on: true, who: -1, order } }, `added "${name}" (${CATS[cat]}, effort ${effort})`, id); }
+function addTask(cat, name, effort, freq) { const id = root.child('tasks').push().key; const order = Math.max(0, ...state.tasks.map(t => t.order ?? 0)) + 1; commit({ [`tasks/${id}`]: { cat, name, effort, freq, on: true, who: -1, order, created: firebase.database.ServerValue.TIMESTAMP } }, `added "${name}" (${CATS[cat]}, effort ${effort})`, id); }
 function setNote(id, text) { const t = T(id); text = text.trim(); if ((t.notes || '') === text) return; commit({ [`tasks/${id}/notes`]: text || null }, text ? `updated the note on "${t.name}"` : `cleared the note on "${t.name}"`, id); }
 function openNote(id, editable = true) {
   const t = T(id); if (!t) return;
@@ -891,18 +924,20 @@ function renderBoard() {
     const hi = tot.indexOf(Math.max(...tot)), lo = tot.indexOf(Math.min(...tot));
     verdict = `<span class="dot" style="background:${col};margin-top:5px"></span><span><b>${txt}</b> · fair share is <b>${fmt(ideal)}</b> pts each · ${esc(state.people[hi])} carries <b>${fmt(spread)}</b> more than ${esc(state.people[lo])}${unassigned ? ` · <b>${fmt(unassigned)}</b> pts unassigned` : ''}</span>`;
   }
-  const filters = [['all', 'All'], ['mine', 'Mine'], ['un', 'Unassigned'], ['rot', 'Rotating']].map(([k, l]) => `<button class="chip ${boardFilter === k ? 'on' : ''}" data-f="${k}">${l}</button>`).join('');
+  const overdueCount = state.tasks.filter(t => overdueInfo(t)).length;
+  const filters = [['all', 'All'], ['mine', 'Mine'], ['un', 'Unassigned'], ['rot', 'Rotating'], ['od', `Overdue${overdueCount ? ' · ' + overdueCount : ''}`]].map(([k, l]) => `<button class="chip ${boardFilter === k ? 'on' : ''}" data-f="${k}">${l}</button>`).join('');
   const sections = Object.keys(CATS).map(key => {
     let tasks = state.tasks.filter(t => t.cat === key);
     if (boardFilter === 'mine') tasks = tasks.filter(t => t.who === me || t.who === 'rot');
     if (boardFilter === 'un') tasks = tasks.filter(t => t.who === -1 && t.on);
     if (boardFilter === 'rot') tasks = tasks.filter(t => t.who === 'rot');
+    if (boardFilter === 'od') tasks = tasks.filter(t => overdueInfo(t));
     const allCat = state.tasks.filter(t => t.cat === key && t.on);
     const catLoad = allCat.reduce((a, t) => a + load(t), 0);
     const rows = tasks.map(t => `
-      <div class="task ${t.on ? '' : 'off'}" data-id="${t.id}">
+      <div class="task ${t.on ? '' : 'off'} ${overdueInfo(t) ? 'overdue' : ''}" data-id="${t.id}" style="${overdueStyle(overdueInfo(t))}" title="${overdueInfo(t) ? esc(overdueInfo(t).text) : ''}">
         <input type="checkbox" class="chk" data-id="${t.id}" ${t.on ? 'checked' : ''} aria-label="Include">
-        <div class="name"><div class="row" style="gap:6px"><input class="name-in" data-id="${t.id}" value="${esc(t.name)}"><button class="notebtn ${t.notes || t.hasPhoto ? 'has' : ''}" data-id="${t.id}" title="${t.notes ? esc(t.notes) : 'Add a note or photo'}">${t.hasPhoto ? '📷' : NOTE_ICON}</button></div>${t.notes ? `<div class="notetxt">${esc(t.notes)}</div>` : ''}</div>
+        <div class="name"><div class="row" style="gap:6px"><input class="name-in" data-id="${t.id}" value="${esc(t.name)}"><button class="notebtn ${t.notes || t.hasPhoto ? 'has' : ''}" data-id="${t.id}" title="${t.notes ? esc(t.notes) : 'Add a note or photo'}">${t.hasPhoto ? '📷' : NOTE_ICON}</button></div>${t.notes ? `<div class="notetxt">${esc(t.notes)}</div>` : ''}${overdueInfo(t) ? `<div class="odline">⚠️ ${overdueInfo(t).text}</div>` : ''}</div>
         <div class="meta">
           <span class="effort" data-id="${t.id}" title="Effort 1–5">${[1, 2, 3, 4, 5].map(n => `<span class="${n <= t.effort ? 'on' : ''}" data-v="${n}">${n}</span>`).join('')}</span>
           <span class="freq"><input type="number" class="freq-in" data-id="${t.id}" value="${t.freq}" min="0" step="0.25"><span class="lbl">×/wk</span></span>
@@ -964,12 +999,13 @@ function renderWeek() {
       const rot = t.who === 'rot' ? `<span class="cat">↻ rotation</span>` : '';
       const st = taskStreak(t); const streak = st.n >= 2 ? `<span class="streak" title="${st.n} ${st.unit}s in a row">🔥 ${st.n}${st.unit === 'day' ? 'd' : 'w'}</span>` : '';
       const note = (t.notes || t.hasPhoto) ? `<button class="notebtn has inline" data-id="${t.id}" title="${esc(t.notes || 'photo')}">${t.hasPhoto ? '📷' : NOTE_ICON}</button>` : '';
-      return `<div class="ck" data-id="${t.id}"><div class="name">${esc(t.name)}${note}${rot}<span class="cat">${t.freq < 1 ? 'as needed' : ''}</span>${streak}</div><div class="prog ${complete ? 'done' : ''}">${complete ? '✓ ' : ''}${n}/${tgt}${t.freq < 1 ? '' : ''} · ${t.effort}pt${t.effort > 1 ? 's' : ''} each</div><div class="days">${cells}</div></div>`;
+      const od = isCur && !complete ? overdueInfo(t) : null;
+      return `<div class="ck ${od ? 'overdue' : ''}" data-id="${t.id}" style="${overdueStyle(od)}"><div class="name">${esc(t.name)}${note}${rot}<span class="cat">${t.freq < 1 ? 'as needed' : ''}</span>${streak}${od ? `<div class="odline">⚠️ ${od.text}</div>` : ''}</div><div class="prog ${complete ? 'done' : ''}">${complete ? '✓ ' : ''}${n}/${tgt}${t.freq < 1 ? '' : ''} · ${t.effort}pt${t.effort > 1 ? 's' : ''} each</div><div class="days">${cells}</div></div>`;
     }).join('')}</div>`;
   }).join('');
   const rots = active.filter(t => t.who === 'rot');
   const rotNote = rots.length ? `<p class="rotnote">Rotation this week: ${rots.map(t => `${esc(t.name)} → <b>${esc(state.people[rotAssignee(t, wk)])}</b>`).join(' · ')}</p>` : '';
-  return `${renderVoteBanner()}${renderWrapCard()}${renderAlertBanner()}${renderCats()}${renderShopping()}<div class="card pad">
+  return `${renderVoteBanner()}${renderWrapCard()}${renderAlertBanner()}${renderOverdueCard()}${renderCats()}${renderShopping()}<div class="card pad">
       <div class="weeknav"><button id="wkPrev" aria-label="Previous week">‹</button><div class="lbl">${label}<div class="hint" style="font-weight:400">${sub}</div></div><button id="wkNext" aria-label="Next week" ${ckWeekOffset >= 0 ? 'disabled style="opacity:.4"' : ''}>›</button></div>
       <div class="scorecards" style="margin-top:12px">${cards}</div>
       ${rotNote}
@@ -1000,6 +1036,16 @@ function renderWrapCard() {
     <div class="hint" style="margin-top:8px">${best && best.pct > 0 ? `${esc(best.p)} led with ${best.pct}%. ` : ''}${rots.length ? 'This week\'s rotation: ' + rots.map(t => `${esc(t.name)} → <b>${esc(state.people[rotAssignee(t, wkNow)])}</b>`).join(' · ') : ''}</div></div>`;
 }
 
+// ---------- Overdue summary (house-wide) ----------
+function renderOverdueCard() {
+  if (ckWeekOffset !== 0) return '';
+  const wk = weekIndex(new Date());
+  const items = state.tasks.map(t => ({ t, o: overdueInfo(t) })).filter(x => x.o).sort((a, b) => b.o.sev - a.o.sev || b.o.days - a.o.days);
+  if (!items.length) return '';
+  const rows = items.slice(0, 6).map(({ t, o }) => { const who = t.who === 'rot' ? rotAssignee(t, wk) : t.who; return `<div class="odrow" style="${overdueStyle(o)}"><span class="odbar"></span><div class="grow"><div class="nm">${esc(t.name)}</div><div class="st">${o.text}${who >= 0 ? ` · <span class="dot p${who}" style="vertical-align:middle"></span> ${esc(state.people[who])}` : ' · unassigned'}</div></div></div>`; }).join('');
+  return `<div class="card odcard"><div class="row" style="padding:12px 14px 6px"><span style="font-size:18px">⏰</span><b>Overdue</b><span class="hint">${items.length} task${items.length === 1 ? '' : 's'} past their usual rhythm</span></div>${rows}${items.length > 6 ? `<div class="hint" style="padding:6px 14px 10px">+${items.length - 6} more — see the Overdue filter on the Board</div>` : ''}</div>`;
+}
+
 // ---------- Cats ----------
 function renderCats() {
   if (ckWeekOffset !== 0) return '';
@@ -1014,7 +1060,8 @@ function renderCats() {
     const daily = targetFor(t) >= 5;
     const status = c ? `<b class="ok">✓ ${daily ? 'Done' : 'Done today'}</b> ${time ? `at ${time}` : ''} · ${who}` : (daily ? `<span class="pending">Not yet today</span>` : `<span class="hint">${Object.keys((state.allChecks[wk] || {})[t.id] || {}).length}/${targetFor(t)} this week</span>`);
     const ystr = yc && daily ? `<span class="hint">yesterday ${yc.ts ? new Date(yc.ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''} · ${esc(state.people[yc.by] ?? '')}</span>` : '';
-    return `<div class="catrow"><button class="catchk ${c ? 'on p' + (c.by ?? 0) : ''} ${c && c.by !== undefined && c.by !== me ? 'locked' : ''}" data-id="${t.id}" aria-label="Toggle" title="${c && c.by !== me ? 'Only ' + esc(state.people[c.by] ?? '') + ' can undo this' : ''}">${c ? '✓' : ''}</button><div class="grow"><div class="nm">${esc(t.name)}</div><div class="st">${status} ${ystr}</div></div></div>`;
+    const od = overdueInfo(t);
+    return `<div class="catrow ${od ? 'overdue' : ''}" style="${overdueStyle(od)}"><button class="catchk ${c ? 'on p' + (c.by ?? 0) : ''} ${c && c.by !== undefined && c.by !== me ? 'locked' : ''}" data-id="${t.id}" aria-label="Toggle" title="${c && c.by !== me ? 'Only ' + esc(state.people[c.by] ?? '') + ' can undo this' : ''}">${c ? '✓' : ''}</button><div class="grow"><div class="nm">${esc(t.name)}</div><div class="st">${status} ${ystr}${od ? `<span class="odline" style="margin:0">⚠️ ${od.text}</span>` : ''}</div></div></div>`;
   }).join('');
   return `<div class="card catcard"><div class="row" style="padding:12px 14px 6px"><span style="font-size:18px">🐈</span><b>Cats today</b><span class="grow"></span><span class="hint">tap to log with the time</span></div>${rows}</div>`;
 }

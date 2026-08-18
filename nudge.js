@@ -80,10 +80,14 @@ async function sendPush(tok, data) {
         const todays = mine.filter(t => targetFor(t) >= 5 && !((checks[wkKey] || {})[t.id] || {})[lp.dow]);
         const weekly = mine.filter(t => targetFor(t) < 5 && t.freq >= 1 && Object.keys((checks[wkKey] || {})[t.id] || {}).length < targetFor(t));
         const catsLeft = todays.filter(t => catRe.test(t.name));
-        if (todays.length || (lp.dow >= 5 && weekly.length)) {
+        // worst overdue task (past its usual rhythm) for this person
+        const startedAt = (house.meta && house.meta.started) || 0;
+        const overdue = mine.filter(t => t.freq > 0).map(t => { let last = 0; for (const [wkk, ts] of Object.entries(checks)) { const ch = ts[t.id]; if (!ch) continue; for (const d of Object.keys(ch)) { const [y, m, dd] = wkk.split('-').map(Number); const dt = Date.UTC(y, m - 1, dd + (+d)); if (dt > last) last = dt; } } const base = last || t.created || startedAt; if (!base) return null; const iv = 7 / t.freq; const days = Math.floor((Date.now() - base) / 864e5); const late = days - iv; const grace = iv <= 1 ? 1 : Math.max(1, iv * 0.5); return late >= grace ? { t, days, last } : null; }).filter(Boolean).sort((a, b) => (b.days / (7 / b.t.freq)) - (a.days / (7 / a.t.freq)))[0];
+        if (todays.length || (lp.dow >= 5 && weekly.length) || overdue) {
           const parts = [];
           if (todays.length) parts.push(`${todays.length} left today: ${todays.slice(0, 3).map(t => t.name).join(', ')}${todays.length > 3 ? '…' : ''}`);
           if (lp.dow >= 5 && weekly.length) parts.push(`${weekly.length} weekly task${weekly.length === 1 ? '' : 's'} still open this week`);
+          if (overdue) parts.push(`⚠️ ${overdue.t.name}: ${overdue.last ? 'not done in ' + overdue.days + ' days' : 'never done'}`);
           const title = catsLeft.length ? `🐈 The cats are waiting — ${catsLeft[0].name.toLowerCase()}` : `Hey ${name}, quick check-in`;
           await deliver({ title, body: parts.join(' · '), url: APP_URL + '?view=week', tag: 'daily' }, `${HOUSE}/nudged/${slot}/${lp.date}`);
         } else {
