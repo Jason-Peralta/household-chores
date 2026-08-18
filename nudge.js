@@ -8,7 +8,6 @@ const { GoogleAuth } = require('google-auth-library');
 
 const PROJECT = 'household-chores-73e50';
 const DB = `https://${PROJECT}-default-rtdb.firebaseio.com`;
-const HOUSE = 'houses/main';
 const APP_URL = 'https://household-chores-73e50.web.app/';
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const catRe = /\bcats?\b|litter|kitt/i;
@@ -36,8 +35,8 @@ function weekIndexOf(dt) { const epoch = Date.UTC(2024, 0, 1); const e = new Dat
 const targetFor = t => t.freq >= 1 ? Math.round(t.freq) : 1;
 const whoRaw = v => v === 'rot' ? 'rot' : (v === undefined || v === null || v === -1 || v === '' ? -1 : +v);
 
-function rotAssignee(tasks, t, wk) { const rots = tasks.filter(x => x.on !== false && whoRaw(x.who) === 'rot'); const i = rots.indexOf(t); return ((wk + Math.max(0, i)) % 3 + 3) % 3; }
-function assignee(tasks, t, wk) { const w = whoRaw(t.who); return w === 'rot' ? rotAssignee(tasks, t, wk) : w; }
+function rotAssignee(tasks, t, wk, n = 3) { const rots = tasks.filter(x => x.on !== false && whoRaw(x.who) === 'rot'); const i = rots.indexOf(t); return ((wk + Math.max(0, i)) % n + n) % n; }
+function assignee(tasks, t, wk, n = 3) { const w = whoRaw(t.who); return w === 'rot' ? rotAssignee(tasks, t, wk, n) : w; }
 
 async function sendPush(tok, data) {
   const r = await fetch(`https://fcm.googleapis.com/v1/projects/${PROJECT}/messages:send`, {
@@ -51,14 +50,21 @@ async function sendPush(tok, data) {
 }
 
 (async () => {
-  const house = await dbGet(HOUSE); if (!house) { console.log('no house data'); return; }
-  const people = house.people || ['Person 1', 'Person 2', 'Person 3'];
+  const all = await dbGet('houses'); if (!all) { console.log('no houses'); return; }
+  let sentTotal = 0;
+  for (const [houseKey, house] of Object.entries(all)) { if (!house || !house.tasks) continue; try { sentTotal += await runHouse('houses/' + houseKey, house); } catch (e) { console.error('house', houseKey, e.message || e); } }
+  console.log(`done — ${sentTotal} notification batch(es) sent`);
+})().catch(e => { console.error(e); process.exit(1); });
+
+async function runHouse(HOUSE, house) {
+  const pv = house.people; const people = Array.isArray(pv) ? pv : (pv && typeof pv === 'object' ? Object.keys(pv).sort((a, b) => a - b).map(k => pv[k]) : ['Person 1', 'Person 2', 'Person 3']);
+  const N = people.length;
   const tasks = Object.entries(house.tasks || {}).map(([id, t]) => ({ id, ...t })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).filter(t => t.on !== false);
   const checks = house.checks || {}; const prefs = house.prefs || {}; const nudged = house.nudged || {}; const wrapped = house.wrapped || {};
   const alerts = house.alerts || {}; const alertDone = house.alertDone || {}; const alerted = house.alerted || {};
   const now = new Date(); let sent = 0;
 
-  for (const slot of [0, 1, 2]) {
+  for (let slot = 0; slot < N; slot++) {
     const p = prefs[slot]; if (!p || !p.reminders) continue;
     const r = p.reminders; const tokens = Object.entries(p.push || {}); if (!tokens.length) continue;
     const tz = r.tz || 'America/New_York'; const lp = localParts(tz, now);
@@ -76,7 +82,7 @@ async function sendPush(tok, data) {
       const inWindow = lp.minutes >= at && lp.minutes < at + 45; // cron may be late by a few minutes
       const already = nudged[slot] && nudged[slot][lp.date];
       if (inWindow && !already) {
-        const mine = tasks.filter(t => assignee(tasks, t, wk) === slot);
+        const mine = tasks.filter(t => assignee(tasks, t, wk, N) === slot);
         const todays = mine.filter(t => targetFor(t) >= 5 && !((checks[wkKey] || {})[t.id] || {})[lp.dow]);
         const weekly = mine.filter(t => targetFor(t) < 5 && t.freq >= 1 && Object.keys((checks[wkKey] || {})[t.id] || {}).length < targetFor(t));
         const catsLeft = todays.filter(t => catRe.test(t.name));
@@ -112,10 +118,10 @@ async function sendPush(tok, data) {
       const last = new Date(wkStart); last.setUTCDate(last.getUTCDate() - 7); const lastKey = keyOf(last); const lastWk = weekIndexOf(last);
       const lastChecks = checks[lastKey] || {};
       const active = tasks.filter(t => t.freq >= 1);
-      const sum = [0, 1, 2].map(i => { const mine = active.filter(t => assignee(tasks, t, lastWk) === i); const planned = mine.reduce((a, t) => a + t.effort * targetFor(t), 0); const done = mine.reduce((a, t) => a + t.effort * Math.min(Object.keys(lastChecks[t.id] || {}).length, targetFor(t)), 0); return { i, pct: planned ? Math.round(done / planned * 100) : 0, planned }; });
+      const sum = people.map((_, i) => { const mine = active.filter(t => assignee(tasks, t, lastWk, N) === i); const planned = mine.reduce((a, t) => a + t.effort * targetFor(t), 0); const done = mine.reduce((a, t) => a + t.effort * Math.min(Object.keys(lastChecks[t.id] || {}).length, targetFor(t)), 0); return { i, pct: planned ? Math.round(done / planned * 100) : 0, planned }; });
       const line = sum.filter(s => s.planned > 0).map(s => `${people[s.i]} ${s.pct}%`).join(' · ');
       const rots = tasks.filter(t => whoRaw(t.who) === 'rot');
-      const rotLine = rots.length ? ` This week's rotation: ${rots.slice(0, 3).map(t => `${t.name} → ${people[rotAssignee(tasks, t, wk)]}`).join(', ')}.` : '';
+      const rotLine = rots.length ? ` This week's rotation: ${rots.slice(0, 3).map(t => `${t.name} → ${people[rotAssignee(tasks, t, wk, N)]}`).join(', ')}.` : '';
       if (Object.keys(lastChecks).length) {
         await deliver({ title: '📬 Last week\'s wrap-up', body: `${line || 'No check-offs recorded'}.${rotLine}`, url: APP_URL + '?view=stats', tag: 'wrap' }, `${HOUSE}/wrapped/${slot}/${wkKey}`);
         // one shared activity entry per week
@@ -129,5 +135,5 @@ async function sendPush(tok, data) {
       }
     }
   }
-  console.log(`done — ${sent} notification batch(es) sent`);
-})().catch(e => { console.error(e); process.exit(1); });
+  return sent;
+}

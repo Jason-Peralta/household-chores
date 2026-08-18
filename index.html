@@ -121,7 +121,7 @@
   .gbtn:hover { background: var(--surface-2); }
 
   /* ---------- Summary ---------- */
-  .people { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .people { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
   .person { padding: 12px; border-radius: 10px; background: var(--surface-2); min-width: 0; }
   .person .nm { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .person .online { width: 7px; height: 7px; border-radius: 50%; background: var(--good); margin-left: auto; flex-shrink: 0; visibility: hidden; }
@@ -189,7 +189,7 @@
   .weeknav { display: flex; align-items: center; gap: 8px; }
   .weeknav .lbl { font-weight: 600; flex: 1; text-align: center; }
   .weeknav button { width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); font-size: 16px; }
-  .scorecards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .scorecards { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
   .score { padding: 10px 12px; border-radius: 10px; background: var(--surface-2); cursor: pointer; border: 2px solid transparent; }
   .score.sel { border-color: var(--text); }
   .score .nm { font-weight: 600; font-size: 13.5px; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; }
@@ -326,7 +326,7 @@
   <div class="card gate-card">
     <div class="logo"><svg width="30" height="30" viewBox="0 0 64 64"><path d="M18 33l10 10 18-20" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
     <h1>Household Chores</h1>
-    <p class="muted" id="gateMsg">Sign in with the Google account Jason added to the house.</p>
+    <p class="muted" id="gateMsg">Sign in with Google to open your house — or create a new one.</p>
     <div id="gateActions">
       <button class="gbtn" id="btnSignIn"><svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6C12.3 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4 7.1-10 7.1-17.5z"/><path fill="#FBBC05" d="M10.4 28.8A14.5 14.5 0 0 1 9.5 24c0-1.7.3-3.3.8-4.8l-7.8-6A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.7-4.1-13.6-9.9l-7.8 6C6.5 42.6 14.6 48 24 48z"/></svg> Sign in with Google</button>
     </div>
@@ -365,7 +365,7 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "765182965334",
   appId: "1:765182965334:web:e8e56eeacb2083f220edf7"
 };
-const HOUSE_KEY = "main";
+let houseId = null; // set after sign-in (a person can belong to more than one house)
 
 // ============================================================================
 //  Defaults
@@ -378,7 +378,8 @@ const THEMES = [
   ['pink', 'Pink', { bg: '#fdf0f6', s: '#fff8fb', a: '#d63384' }],
   ['pinknight', 'Pink night', { bg: '#170d13', s: '#21141c', a: '#f062a5' }],
 ];
-const DEFAULT_COLORS = ['#2a78d6', '#eb6834', '#1baf7a'];
+const DEFAULT_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#8e44ad', '#e6399b', '#00b4d8'];
+const MAX_PEOPLE = 6;
 const PRESET_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#e6399b', '#8e44ad', '#e74c3c', '#f1c40f', '#16a085', '#ff7eb6', '#00b4d8', '#7c5cff', '#2ecc71', '#ff9f43', '#5d4037', '#607d8b'];
 const VAPID_KEY = 'BObg-Jnozc7qSd8TS0Gqj8z9Wf_LKzMKaONbjEH-tIUyiv9U2qoP54D-2k9VdhTX4uRDAs4o1WjU-hXhO6BUtIE';
 let currentTheme = 'system';
@@ -393,9 +394,12 @@ applyTheme(currentTheme);
 function inkFor(hex) { const c = hex.replace('#', ''); if (c.length !== 6) return '#fff'; const [r, g, b] = [0, 2, 4].map(i => parseInt(c.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)); const L = 0.2126 * r + 0.7152 * g + 0.0722 * b; return L > 0.45 ? '#111' : '#fff'; }
 function applyColors(colors) {
   const st = document.documentElement.style;
-  for (let i = 0; i < 3; i++) { const c = /^#[0-9a-f]{6}$/i.test(colors?.[i] || '') ? colors[i] : DEFAULT_COLORS[i]; st.setProperty(`--p${i}`, c); st.setProperty(`--p${i}-ink`, inkFor(c)); }
+  for (let i = 0; i < MAX_PEOPLE; i++) { const c = /^#[0-9a-f]{6}$/i.test(colors?.[i] || '') ? colors[i] : DEFAULT_COLORS[i]; st.setProperty(`--p${i}`, c); st.setProperty(`--p${i}-ink`, inkFor(c)); }
 }
 applyColors(DEFAULT_COLORS);
+(function personCss() { let css = ''; for (let i = 0; i < MAX_PEOPLE; i++) { css += `:root{--p${i}-soft:color-mix(in srgb,var(--p${i}) var(--soft-mix),var(--surface));}
+.avatar.p${i}{background:var(--p${i});color:var(--p${i}-ink)} .chip.p${i}.on{background:var(--p${i});border-color:var(--p${i});color:var(--p${i}-ink)} .dot.p${i}{background:var(--p${i})} .fill.p${i}{background:var(--p${i})}
+.day.on.p${i}{background:var(--p${i});border-color:var(--p${i});color:var(--p${i}-ink)} .catchk.on.p${i}{background:var(--p${i});color:var(--p${i}-ink)} select.who-sel.p${i}{background-color:var(--p${i}-soft);border-color:var(--p${i})}\n`; } const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st); })();
 
 const CATS = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly / as needed' };
 const DEFAULT_PEOPLE = ['Jason', 'Stacy', 'Fabian'];
@@ -457,7 +461,7 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 // ============================================================================
 //  State & helpers
 // ============================================================================
-let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {}, members: {}, allChecks: {}, votes: {}, colors: [...DEFAULT_COLORS], prefs: {}, alerts: {}, alertDone: {}, list: {}, started: null };
+let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {}, members: {}, allChecks: {}, votes: {}, colors: [...DEFAULT_COLORS], prefs: {}, alerts: {}, alertDone: {}, list: {}, started: null, houseIds: [], houseName: '' };
 Object.defineProperty(state, 'checks', { get() { return state.allChecks[weekKey(selectedWeekStart())] || {}; } });
 let me = null, user = null, db = null, root = null;
 let feed = [], view = 'week', boardFilter = 'all', ckPerson = null, ckWeekOffset = 0, feedShowChecks = true;
@@ -485,7 +489,7 @@ function weekIndex(d) { return Math.round((startOfWeek(d).getTime() - startOfWee
 function selectedWeekStart() { const s = startOfWeek(new Date()); s.setDate(s.getDate() + ckWeekOffset * 7); return s; }
 function todayIdx() { return (new Date().getDay() + 6) % 7; }
 // Rotation: rotating tasks cycle through people, staggered so nobody gets them all in the same week
-function rotAssignee(t, wk) { const rots = state.tasks.filter(x => x.on && x.who === 'rot'); const i = rots.indexOf(t); return ((wk + Math.max(0, i)) % 3 + 3) % 3; }
+function rotAssignee(t, wk) { const n = Math.max(1, state.people.length); const rots = state.tasks.filter(x => x.on && x.who === 'rot'); const i = rots.indexOf(t); return ((wk + Math.max(0, i)) % n + n) % n; }
 function targetFor(t) { return t.freq >= 1 ? Math.round(t.freq) : 1; }
 
 // Block pinch-zoom and double-tap-zoom (Safari ignores user-scalable=no in the browser)
@@ -527,7 +531,7 @@ window.addEventListener('appinstalled', () => { installPrompt = null; if (typeof
 firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 db = firebase.database();
-root = db.ref('houses/' + HOUSE_KEY);
+// root is set once we know which house the signed-in person belongs to
 
 // Warm up the auth helper iframe at load so the sign-in popup opens instantly on tap
 // (Safari blocks popups that open too long after the tap; redirect sign-in is not used
@@ -543,24 +547,64 @@ $('btnSignIn').onclick = () => {
     if (e.code === 'auth/popup-blocked' && window.SAME_ORIGIN_AUTH) { auth.signInWithRedirect(provider); return; }
     if (e.code === 'auth/popup-blocked') $('gateErr').innerHTML = 'Your browser blocked the sign-in window. Tap <b>Sign in with Google</b> again — if it keeps happening, allow pop-ups for this site (iPhone: Settings → Safari → turn off "Block Pop-ups") and retry.';
     else if (e.code === 'auth/operation-not-supported-in-this-environment') $('gateErr').textContent = 'Sign-in can\'t run inside this app view. Open the link in Safari or Chrome instead.';
-    else if (e.code === 'auth/unauthorized-domain') $('gateErr').textContent = 'This address isn\'t authorized for sign-in yet — ask Jason.';
+    else if (e.code === 'auth/unauthorized-domain') $('gateErr').textContent = 'This address isn\'t authorized for sign-in.';
     else if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') $('gateErr').textContent = e.message;
   });
 };
 
 auth.onAuthStateChanged(async u => {
   user = u;
-  if (!u) { showGate('Sign in with the Google account Jason added to the house.', true); return; }
-  const email = (u.email || '').toLowerCase();
+  if (!u) { showGate('Sign in with Google to open your house — or create a new one.', true); return; }
+  const email = (u.email || '').toLowerCase(); const key = emailKey(email);
   showGate('Checking access…', false);
   try {
-    const snap = await root.child('members/' + emailKey(email)).once('value');
-    const m = snap.val();
-    if (!m || m.slot === undefined) { showGate(`${email} isn't on the house list yet. Ask Jason to add it under Members, then reload.`, false, true); return; }
-    me = +m.slot;
+    let ids = Object.keys((await db.ref('userHouses/' + key).once('value')).val() || {});
+    if (!ids.length) { // original house predates the index
+      const m = (await db.ref('houses/main/members/' + key).once('value')).val();
+      if (m && m.slot !== undefined) { ids = ['main']; db.ref('userHouses/' + key + '/main').set(true).catch(() => {}); }
+    }
+    if (!ids.length) { showOnboarding(email); return; }
+    let chosen = ids[0]; try { const last = localStorage.getItem('chore-house'); if (last && ids.includes(last)) chosen = last; } catch {}
+    const m = (await db.ref('houses/' + chosen + '/members/' + key).once('value')).val();
+    if (!m || m.slot === undefined) { showGate(`${email} isn't on that house's list anymore. Ask a housemate to add you back, then reload.`, false, true); return; }
+    houseId = chosen; root = db.ref('houses/' + houseId); me = +m.slot; state.houseIds = ids;
+    try { localStorage.setItem('chore-house', houseId); } catch {}
     boot();
   } catch (e) { showGate(`Couldn't check access for ${email}: ${e.message}`, false, true); }
 });
+function switchHouse(id) { try { localStorage.setItem('chore-house', id); } catch {} location.reload(); }
+// ---- Onboarding: no house yet → create one (or wait to be added) ----
+function showOnboarding(email) {
+  showGate('', false, true);
+  const first = (user && user.displayName ? user.displayName.split(' ')[0] : '') || '';
+  $('gateMsg').innerHTML = `Signed in as <b>${esc(email)}</b>. You're not in a house yet.`;
+  let box = $('onboard'); if (!box) { box = document.createElement('div'); box.id = 'onboard'; box.style.marginTop = '14px'; box.style.textAlign = 'left'; $('gateActions').prepend(box); }
+  box.innerHTML = `<div class="hint" style="text-align:center;margin-bottom:10px">If a housemate already set one up, ask them to add this email under <b>House</b>, then reload. Otherwise:</div>
+    <form id="newHouse" style="display:flex;flex-direction:column;gap:8px">
+      <input class="text" name="hname" placeholder="House name (e.g. Casa Peralta)" required>
+      <label class="hint">How many people live here? <select class="sel" name="n">${[2, 3, 4, 5, 6].map(n => `<option value="${n}" ${n === 3 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <div id="nameInputs" style="display:flex;flex-direction:column;gap:6px"></div>
+      <label class="row" style="gap:8px;font-size:14px"><input type="checkbox" name="cats" checked style="width:20px;height:20px;accent-color:var(--accent)"> We have cats (adds litter/feeding tasks)</label>
+      <button class="btn primary" type="submit">Create house</button>
+    </form>`;
+  const f = $('newHouse'); const names = $('nameInputs');
+  const drawNames = () => { const n = +f.n.value; const cur = [...names.querySelectorAll('input')].map(i => i.value); names.innerHTML = Array.from({ length: n }, (_, i) => `<input class="text" name="p${i}" placeholder="${i === 0 ? 'Your name' : 'Housemate ' + i}" value="${esc(cur[i] ?? (i === 0 ? first : ''))}" required>`).join(''); };
+  f.n.onchange = drawNames; drawNames();
+  f.onsubmit = async e => { e.preventDefault(); const n = +f.n.value; const people = Array.from({ length: n }, (_, i) => f['p' + i].value.trim() || 'Person ' + (i + 1)); const btn = f.querySelector('button'); btn.disabled = true; btn.textContent = 'Creating…';
+    try { await createHouse(f.hname.value.trim(), people, f.cats.checked); } catch (err) { btn.disabled = false; btn.textContent = 'Create house'; $('gateErr').textContent = 'Could not create the house: ' + (err.message || err); } };
+}
+async function createHouse(name, people, cats) {
+  const email = (user.email || '').toLowerCase(); const key = emailKey(email);
+  const id = db.ref('houses').push().key;
+  // 1) claim the house by becoming its first member (rules allow this only while it has no members)
+  await db.ref(`houses/${id}/members/${key}`).set({ slot: 0, email, addedBy: 0 });
+  // 2) seed it
+  const tasks = {}; DEFAULT_TASKS.filter(t => cats || !catRe.test(t.name)).forEach((t, i) => tasks['t' + String(i + 1).padStart(3, '0')] = { ...t, on: true, who: -1, order: i });
+  await db.ref(`houses/${id}`).update({ name: name || 'Our house', people, tasks, 'meta/started': firebase.database.ServerValue.TIMESTAMP, 'meta/alertsSeeded': true, createdBy: email });
+  await db.ref(`userHouses/${key}/${id}`).set(true);
+  try { localStorage.setItem('chore-house', id); } catch {}
+  if (!window.__noReload) location.reload();
+}
 function showGate(msg, canSignIn, canSignOut) {
   $('gate').style.display = 'flex'; $('app').classList.remove('ready');
   $('gateMsg').textContent = msg;
@@ -587,11 +631,13 @@ function boot() {
   });
   root.child('tasks').transaction(cur => {
     if (cur) return;
-    const obj = {}; DEFAULT_TASKS.forEach((t, i) => obj['t' + String(i + 1).padStart(3, '0')] = { ...t, on: true, who: t.who ?? -1, order: i });
+    const obj = {}; DEFAULT_TASKS.forEach((t, i) => obj['t' + String(i + 1).padStart(3, '0')] = { ...t, on: true, who: houseId === 'main' ? (t.who ?? -1) : -1, order: i });
     return obj;
   }).then(() => root.child('people').transaction(cur => cur || DEFAULT_PEOPLE));
+  if (houseId !== 'main') { /* only the original house gets the seeded task list with pre-filled assignments */ }
 
-  root.child('people').on('value', s => { const v = s.val(); if (Array.isArray(v) && v.length === 3) state.people = v.map(String); render(); });
+  root.child('people').on('value', s => { const v = s.val(); const arr = Array.isArray(v) ? v : (v && typeof v === 'object' ? Object.keys(v).sort((a, b) => a - b).map(k => v[k]) : null); if (arr && arr.length >= 2) state.people = arr.map(String); render(); });
+  root.child('name').on('value', s => { state.houseName = s.val() || ''; if (view === 'members') render(); });
   root.child('tasks').on('value', s => {
     const v = s.val() || {};
     state.tasks = Object.entries(v).map(([id, t]) => ({ id, ...t, who: whoRaw(t.who), on: t.on !== false, effort: +t.effort || 1, freq: +t.freq || 0 })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -607,7 +653,7 @@ function boot() {
   root.child('meta/started').transaction(cur => cur ? undefined : firebase.database.ServerValue.TIMESTAMP).catch(() => {});
   root.child('meta/started').on('value', s => { state.started = s.val() || null; });
   root.child('meta/alertsSeeded').transaction(cur => cur ? undefined : true).then(r => { if (r && r.committed) root.child('alerts/cardboard').set({ name: 'Cardboard recycling', emoji: '📦', dow: 3, time: '18:00', note: 'Take it out Thursday — pickup is Friday morning', order: 0 }); }).catch(() => {});
-  root.child('colors').on('value', s => { const v = s.val() || {}; state.colors = [0, 1, 2].map(i => v[i] || DEFAULT_COLORS[i]); applyColors(state.colors); if (view === 'members') render(); });
+  root.child('colors').on('value', s => { const v = s.val() || {}; state.colors = DEFAULT_COLORS.map((c, i) => v[i] || c); applyColors(state.colors); if (view === 'members') render(); });
   root.child('prefs/' + me).on('value', s => { state.prefs = s.val() || {}; const t = state.prefs.theme; if (t && t !== currentTheme) applyTheme(t); if (view === 'members') render(); });
   // keep the push token fresh on devices where reminders are already on
   setTimeout(() => { const r = myReminders(); if ((r.daily || r.wrap) && 'Notification' in window && Notification.permission === 'granted') registerPush(false); }, 3000);
@@ -682,7 +728,7 @@ function setPresence() { if (me === null) return; const ref = root.child('presen
 function commit(updates, logText, taskId, kind = 'edit') {
   const u = { ...updates };
   const key = root.child('log').push().key;
-  u['log/' + key] = { by: me, name: state.people[me], text: logText, ts: firebase.database.ServerValue.TIMESTAMP, taskId: taskId || null, kind };
+  u['log/' + key] = { by: me, name: state.people[me] || 'Someone', text: logText, ts: firebase.database.ServerValue.TIMESTAMP, taskId: taskId || null, kind };
   return root.update(u).catch(e => toast('Save failed: ' + (e.message || e)));
 }
 setInterval(() => { // trim the log so it never grows unbounded
@@ -717,7 +763,7 @@ function shrinkImage(file, max = 1000, q = 0.72) {
     img.onload = () => { const sc = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); const d = c.toDataURL('image/jpeg', q); if (d.length > 400000) rej(new Error('image too large')); else res(d); };
     img.onerror = () => rej(new Error('could not read image')); img.src = url; });
 }
-function renamePerson(i, name) { name = name.trim() || DEFAULT_PEOPLE[i]; if (name === state.people[i]) return; commit({ [`people/${i}`]: name }, `renamed ${state.people[i]} → ${name}`); }
+function renamePerson(i, name) { name = name.trim() || ('Person ' + (i + 1)); if (name === state.people[i]) return; commit({ [`people/${i}`]: name }, `renamed ${state.people[i]} → ${name}`); }
 function autoBalance() {
   const { tot } = totals(); const pending = state.tasks.filter(t => t.on && t.who === -1).sort((a, b) => load(b) - load(a));
   if (!pending.length) return toast('Nothing left to assign');
@@ -867,12 +913,13 @@ function renderShopping() {
 function addMember(slot, email) {
   email = email.trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('That doesn\'t look like an email');
   commit({ [`members/${emailKey(email)}`]: { slot, email, addedBy: me } }, `added ${email} as ${state.people[slot]}`);
+  db.ref(`userHouses/${emailKey(email)}/${houseId}`).set(true).catch(() => {});
 }
 function removeMember(key) {
   const m = state.members[key]; if (!m) return;
   const cnt = Object.values(state.members).length;
   if (cnt <= 1) return toast('You can\'t remove the last member');
-  confirmModal(`Remove ${m.email}?`, m.email === (user.email || '').toLowerCase() ? 'That is your own account — you will be locked out until someone re-adds you.' : 'They will no longer be able to open the board.', () => commit({ [`members/${key}`]: null }, `removed ${m.email}`));
+  confirmModal(`Remove ${m.email}?`, m.email === (user.email || '').toLowerCase() ? 'That is your own account — you will be locked out until someone re-adds you.' : 'They will no longer be able to open the board.', () => { commit({ [`members/${key}`]: null }, `removed ${m.email}`); db.ref(`userHouses/${key}/${houseId}`).remove().catch(() => {}); });
 }
 
 // ============================================================================
@@ -880,7 +927,7 @@ function removeMember(key) {
 // ============================================================================
 function totals() {
   const tot = state.people.map(() => 0); let unassigned = 0, all = 0;
-  for (const t of state.tasks) { if (!t.on) continue; const l = load(t); all += l; if (t.who === 'rot') tot.forEach((_, i) => tot[i] += l / 3); else if (t.who >= 0) tot[t.who] += l; else unassigned += l; }
+  for (const t of state.tasks) { if (!t.on) continue; const l = load(t); all += l; if (t.who === 'rot') tot.forEach((_, i) => tot[i] += l / tot.length); else if (t.who >= 0) tot[t.who] += l; else unassigned += l; }
   return { tot, unassigned, all };
 }
 const TABS = [
@@ -925,7 +972,7 @@ function renderBoard() {
   const assigned = all - unassigned;
   if (!assigned) verdict = `<span>Nothing assigned yet — pick names below or hit <b>Auto-balance</b>.</span>`;
   else {
-    const ideal = all / 3, spread = Math.max(...tot) - Math.min(...tot), sp = ideal ? spread / ideal * 100 : 0;
+    const ideal = all / Math.max(1, tot.length), spread = Math.max(...tot) - Math.min(...tot), sp = ideal ? spread / ideal * 100 : 0;
     const [txt, col] = sp <= 10 ? ['Nicely balanced', 'var(--good)'] : sp <= 25 ? ['Slightly uneven', 'var(--warn)'] : ['Unbalanced', 'var(--bad)'];
     const hi = tot.indexOf(Math.max(...tot)), lo = tot.indexOf(Math.min(...tot));
     verdict = `<span class="dot" style="background:${col};margin-top:5px"></span><span><b>${txt}</b> · fair share is <b>${fmt(ideal)}</b> pts each · ${esc(state.people[hi])} carries <b>${fmt(spread)}</b> more than ${esc(state.people[lo])}${unassigned ? ` · <b>${fmt(unassigned)}</b> pts unassigned` : ''}</span>`;
@@ -966,7 +1013,7 @@ function renderBoard() {
   return `${renderVoteBanner()}<div class="card pad scorepin"><div class="people">${people}</div><div class="verdict">${verdict}</div></div>
     <div class="toolbar"><div class="chips grow">${filters}</div></div>
     <div class="row wrap" style="margin-bottom:6px"><button class="btn primary sm" id="btnAuto">Auto-balance unassigned</button><button class="btn sm" id="btnClear">Clear assignments…</button><span class="grow"></span><button class="btn sm" id="btnExport">Export</button></div>
-    <p class="hint">Weekly load = effort (1–5) × times per week. "Rotate" cycles a task between the three of you each week — see My Week for whose turn it is.</p>
+    <p class="hint">Weekly load = effort (1–5) × times per week. "Rotate" cycles a task between everyone each week — see My Week for whose turn it is.</p>
     ${sections}`;
 }
 function whoSelect(t) {
@@ -1124,7 +1171,9 @@ function renderMembers() {
       <form class="add-member" data-i="${i}"><input type="email" placeholder="Add a Google email for ${esc(p)}" required><button class="btn sm" type="submit">Add</button></form>
     </div></div>`;
   }).join('');
-  return `${renderVoteBanner()}<h1 style="font-size:18px">The house</h1>
+  const others = (state.houseIds || []).filter(h => h !== houseId);
+  return `${renderVoteBanner()}<div class="row" style="gap:10px"><h1 style="font-size:18px;margin:0">The house</h1><input class="pn hn" id="houseName" value="${esc(state.houseName || (houseId === 'main' ? 'Our house' : ''))}" placeholder="House name" style="font-weight:600;font-size:15px;border:none;border-bottom:1px dashed var(--border);background:transparent;padding:2px 0;flex:1;min-width:0"></div>
+    ${others.length ? `<div class="hint" style="margin:4px 0 8px">You're in ${others.length + 1} houses · switch: ${others.map(h => `<button class="chip sw-house" data-h="${esc(h)}">${esc(h === 'main' ? 'Our house' : h.slice(-6))}</button>`).join(' ')}</div>` : ''}
     <div class="card">${rows}</div>
     <p class="hint" style="margin:8px 2px 0">Only emails listed here can open the board. Add each person's Google account next to their name; they sign in with it and everything they do is tagged with their name.</p>
     ${renderReminders()}
@@ -1144,7 +1193,7 @@ function renderMembers() {
       <div class="hint" style="margin-top:12px">Everyone: ${state.people.map((p, i) => `<span class="dot p${i}" style="margin:0 3px 0 8px"></span>${esc(p)}`).join('')}</div>
     </div>
     <h2>Tools</h2>
-    <div class="card pad row wrap"><button class="btn sm" id="btnExport">Export plan</button><button class="btn sm" id="btnReset">Reset task list… (house vote)</button><span class="grow"></span><button class="btn sm ghost" id="btnSignOut">Sign out (${esc(user?.email || '')})</button></div>
+    <div class="card pad row wrap"><button class="btn sm" id="btnExport">Export plan</button><button class="btn sm" id="btnReset">Reset task list… (house vote)</button><button class="btn sm" id="btnNewHouse">Create another house…</button><span class="grow"></span><button class="btn sm ghost" id="btnSignOut">Sign out (${esc(user?.email || '')})</button></div>
     <p class="hint" style="margin:8px 2px 0">Resetting the task list or clearing every assignment starts a house vote — it only happens if everyone says yes.</p>
     ${installPrompt ? '<div class="card pad row wrap" style="margin-top:12px"><b>Install the app</b><span class="hint grow">Full-screen, home-screen icon, notifications.</span><button class="btn sm primary" id="btnInstall">Install</button></div>' : ''}
     <p class="hint" style="margin:8px 2px 0">${window.SAME_ORIGIN_AUTH ? 'Install it like an app: iPhone — Safari Share → Add to Home Screen. Android — Chrome menu ⋮ → "Add to Home screen" (or "Install app"). Notifications work from the installed app.' : 'On your phone: bookmark this page or use "Add to Home Screen" for a quick icon (it opens in your browser, which is what keeps sign-in working on iPhone).'}</p>`;
@@ -1168,6 +1217,7 @@ function wire() {
   v.querySelectorAll('.vote-no').forEach(b => b.onclick = () => castVote(b.dataset.k, false));
   const ex = $('btnExport'); if (ex) ex.onclick = openExport;
   const so = $('btnSignOut'); if (so) so.onclick = () => auth.signOut().then(() => location.reload());
+  const nh = $('btnNewHouse'); if (nh) nh.onclick = () => { $('app').classList.remove('ready'); showOnboarding((user.email || '').toLowerCase()); $('gateMsg').innerHTML = `Create another house for <b>${esc((user.email || '').toLowerCase())}</b> — you can switch between them from the House tab.`; const back = document.createElement('button'); back.className = 'btn ghost'; back.style.marginTop = '10px'; back.textContent = 'Back'; back.onclick = () => { $('gate').style.display = 'none'; $('app').classList.add('ready'); }; $('onboard').appendChild(back); };
   // week
   const wp = $('wkPrev'); if (wp) wp.onclick = () => { ckWeekOffset--; subscribeChecks(); render(); };
   const wn = $('wkNext'); if (wn) wn.onclick = () => { if (ckWeekOffset < 0) { ckWeekOffset++; subscribeChecks(); render(); } };
@@ -1180,7 +1230,9 @@ function wire() {
   // feed
   const fc = $('feedChecks'); if (fc) fc.onchange = e => { feedShowChecks = e.target.checked; render(); };
   // members
-  v.querySelectorAll('.pn').forEach(el => { el.onchange = e => renamePerson(+e.target.dataset.i, e.target.value); el.onkeydown = e => { if (e.key === 'Enter') e.target.blur(); }; });
+  const hn = $('houseName'); if (hn) hn.onchange = e => { const nm = e.target.value.trim(); if (nm && nm !== state.houseName) commit({ name: nm }, `renamed the house to “${nm}”`); };
+  v.querySelectorAll('.sw-house').forEach(b => b.onclick = () => switchHouse(b.dataset.h));
+  v.querySelectorAll('.pn:not(.hn)').forEach(el => { el.onchange = e => renamePerson(+e.target.dataset.i, e.target.value); el.onkeydown = e => { if (e.key === 'Enter') e.target.blur(); }; });
   v.querySelectorAll('form.add-member').forEach(f => f.onsubmit = e => { e.preventDefault(); addMember(+f.dataset.i, f.querySelector('input').value); f.reset(); });
   v.querySelectorAll('.rm-member').forEach(b => b.onclick = () => removeMember(b.dataset.k));
   const wc = $('wrapClose'); if (wc) wc.onclick = () => { try { const last = startOfWeek(new Date()); last.setDate(last.getDate() - 7); localStorage.setItem('wrap-dismissed', weekKey(last)); } catch {} render(); };
