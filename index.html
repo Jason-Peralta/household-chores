@@ -275,6 +275,10 @@
   .swatches button.on { border-color: var(--text); }
   .prev { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; font-weight: 600; font-size: 13px; }
 
+  .updatebar { position: fixed; left: 12px; right: 12px; bottom: calc(var(--nav-h) + 12px + env(safe-area-inset-bottom)); z-index: 25; background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 12px; display: flex; align-items: center; gap: 12px; font-size: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+  .updatebar span { flex: 1; }
+  @media (min-width: 760px) { .updatebar { bottom: 20px; left: auto; right: 20px; width: 380px; } }
+
   /* ---------- Modal ---------- */
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: flex-end; justify-content: center; z-index: 20; }
   @media (min-width: 600px) { .overlay { align-items: center; padding: 20px; } }
@@ -455,6 +459,27 @@ document.addEventListener('gesturestart', e => e.preventDefault(), { passive: fa
 document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
 document.addEventListener('touchmove', e => { if (e.scale !== undefined && e.scale !== 1) e.preventDefault(); }, { passive: false });
 let _lastTap = 0; document.addEventListener('touchend', e => { const now = Date.now(); if (now - _lastTap < 300 && !e.target.closest('input, textarea, select')) e.preventDefault(); _lastTap = now; }, { passive: false });
+
+// ---- Update check: home-screen apps can hold an old copy; offer a one-tap reload when a new version is live ----
+(function updateWatch() {
+  let mine = null;
+  const hash = t => { let h = 0; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return h + ':' + t.length; };
+  async function check() {
+    try {
+      const r = await fetch(location.pathname + '?u=' + Date.now(), { cache: 'no-store' }); if (!r.ok) return;
+      const h = hash(await r.text());
+      if (mine === null) { mine = h; return; }
+      if (h !== mine && !document.getElementById('updateBar')) {
+        const d = document.createElement('div'); d.id = 'updateBar'; d.className = 'updatebar';
+        d.innerHTML = '<span>A new version of the app is ready.</span><button class="btn sm primary" id="btnUpdate">Update now</button>';
+        document.body.appendChild(d); document.getElementById('btnUpdate').onclick = () => location.reload();
+      }
+    } catch {}
+  }
+  if (location.protocol === 'file:') return;
+  check(); setInterval(check, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+})();
 
 // ============================================================================
 //  Auth gate
