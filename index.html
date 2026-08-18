@@ -15,10 +15,10 @@
   window.SAME_ORIGIN_AUTH = /\.(web\.app|firebaseapp\.com)$/.test(location.hostname);
   if (window.SAME_ORIGIN_AUTH) { const m = document.createElement('meta'); m.name = 'apple-mobile-web-app-capable'; m.content = 'yes'; document.head.appendChild(m); }
 </script>
-<link rel="manifest" id="manifestLink" href="manifest-browser.webmanifest">
+<link rel="manifest" id="manifestLink" href="manifest.webmanifest">
 <title>Household Chores</title>
 <script>try { document.documentElement.setAttribute('data-theme', localStorage.getItem('chore-theme') || 'system'); } catch (e) { document.documentElement.setAttribute('data-theme', 'system'); }</script>
-<script>if (window.SAME_ORIGIN_AUTH) document.getElementById('manifestLink').href = 'manifest.webmanifest';</script>
+<script>if (!window.SAME_ORIGIN_AUTH) document.getElementById('manifestLink').href = 'manifest-browser.webmanifest';</script>
 <style>
   :root {
     color-scheme: light;
@@ -493,6 +493,12 @@ document.addEventListener('gesturestart', e => e.preventDefault(), { passive: fa
 document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
 document.addEventListener('touchmove', e => { if (e.scale !== undefined && e.scale !== 1) e.preventDefault(); }, { passive: false });
 let _lastTap = 0; document.addEventListener('touchend', e => { const now = Date.now(); if (now - _lastTap < 300 && !e.target.closest('input, textarea, select')) e.preventDefault(); _lastTap = now; }, { passive: false });
+
+// ---- Service worker (needed for Android install + push) and the browser's install prompt ----
+let installPrompt = null;
+if ('serviceWorker' in navigator && location.protocol === 'https:') { navigator.serviceWorker.register('./firebase-messaging-sw.js').catch(() => {}); }
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if (typeof render === 'function' && typeof view !== 'undefined' && view === 'members') render(); });
+window.addEventListener('appinstalled', () => { installPrompt = null; if (typeof toast === 'function') toast('Installed — find Chores on your home screen'); });
 
 // ---- Update check: home-screen apps can hold an old copy; offer a one-tap reload when a new version is live ----
 (function updateWatch() {
@@ -1140,6 +1146,7 @@ function renderMembers() {
     <h2>Tools</h2>
     <div class="card pad row wrap"><button class="btn sm" id="btnExport">Export plan</button><button class="btn sm" id="btnReset">Reset task list… (house vote)</button><span class="grow"></span><button class="btn sm ghost" id="btnSignOut">Sign out (${esc(user?.email || '')})</button></div>
     <p class="hint" style="margin:8px 2px 0">Resetting the task list or clearing every assignment starts a house vote — it only happens if everyone says yes.</p>
+    ${installPrompt ? '<div class="card pad row wrap" style="margin-top:12px"><b>Install the app</b><span class="hint grow">Full-screen, home-screen icon, notifications.</span><button class="btn sm primary" id="btnInstall">Install</button></div>' : ''}
     <p class="hint" style="margin:8px 2px 0">${window.SAME_ORIGIN_AUTH ? 'Install it like an app: iPhone — Safari Share → Add to Home Screen. Android — Chrome menu ⋮ → "Add to Home screen" (or "Install app"). Notifications work from the installed app.' : 'On your phone: bookmark this page or use "Add to Home Screen" for a quick icon (it opens in your browser, which is what keeps sign-in working on iPhone).'}</p>`;
 }
 
@@ -1181,6 +1188,7 @@ function wire() {
   const rt = $('remTime'); if (rt) rt.onchange = e => setReminders({ time: e.target.value || '18:00' });
   const rw = $('remWrap'); if (rw) rw.onchange = e => setReminders({ wrap: e.target.checked });
   const rtst = $('remTest'); if (rtst) rtst.onclick = testNotification;
+  const bi = $('btnInstall'); if (bi) bi.onclick = async () => { if (!installPrompt) return; installPrompt.prompt(); try { await installPrompt.userChoice; } catch {} installPrompt = null; render(); };
   v.querySelectorAll('.alert-sub').forEach(el => el.onchange = e => toggleAlertSub(el.dataset.id, e.target.checked));
   v.querySelectorAll('.rm-alert').forEach(b => b.onclick = () => removeAlert(b.dataset.id));
   const af = $('alertForm'); if (af) af.onsubmit = e => { e.preventDefault(); const fd = new FormData(af); addAlert(String(fd.get('name')).trim(), +fd.get('dow'), fd.get('time') || '18:00', String(fd.get('note') || '').trim()); af.reset(); };
