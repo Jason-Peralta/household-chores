@@ -55,6 +55,7 @@ async function sendPush(tok, data) {
   const people = house.people || ['Person 1', 'Person 2', 'Person 3'];
   const tasks = Object.entries(house.tasks || {}).map(([id, t]) => ({ id, ...t })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).filter(t => t.on !== false);
   const checks = house.checks || {}; const prefs = house.prefs || {}; const nudged = house.nudged || {}; const wrapped = house.wrapped || {};
+  const alerts = house.alerts || {}; const alertDone = house.alertDone || {}; const alerted = house.alerted || {};
   const now = new Date(); let sent = 0;
 
   for (const slot of [0, 1, 2]) {
@@ -89,6 +90,17 @@ async function sendPush(tok, data) {
           await dbPatch(`${HOUSE}/nudged/${slot}/${lp.date}`, { ts: Date.now(), skipped: true }); // all done — stay quiet
         }
       }
+    }
+
+    // ---- house alerts (e.g. cardboard out on Thursday) ----
+    for (const [aid, a] of Object.entries(alerts)) {
+      if (!a || !(p.alerts && p.alerts[aid])) continue;
+      if (a.dow !== lp.dow) continue;
+      const [ah, am] = String(a.time || '18:00').split(':').map(Number); const at = ah * 60 + am;
+      if (!(lp.minutes >= at && lp.minutes < at + 45)) continue;
+      if (alerted[slot] && alerted[slot][wkKey] && alerted[slot][wkKey][aid]) continue;
+      if (alertDone[wkKey] && alertDone[wkKey][aid]) { await dbPatch(`${HOUSE}/alerted/${slot}/${wkKey}`, { [aid]: { ts: Date.now(), skipped: true } }); continue; } // already handled
+      await deliver({ title: `${a.emoji || '🔔'} ${a.name}`, body: a.note || `It's ${DAYS[a.dow]} — time to take care of this.`, url: APP_URL + '?view=week', tag: 'alert-' + aid }, `${HOUSE}/alerted/${slot}/${wkKey}/${aid}`);
     }
 
     // ---- weekly wrap-up (Monday, 8:00–12:00 local, once) ----

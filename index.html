@@ -287,6 +287,17 @@
 
   .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 40; }
 
+  .alertcard { margin-bottom: 12px; border-color: var(--warn); }
+  .alertrow { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--border); }
+  .alertrow:first-child { border-top: none; }
+  .alertrow .nm { font-weight: 600; } .alertrow .st { font-size: 12.5px; color: var(--text-2); } .alertrow .ok { color: var(--good); } .alertrow .pending { color: var(--warn); font-weight: 600; }
+  .alertset { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .shopcard { margin-bottom: 12px; }
+  .shoprow { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-top: 1px solid var(--border); }
+  .shoprow .nm { font-weight: 500; } .shoprow .st { font-size: 12px; color: var(--text-3); display: flex; align-items: center; gap: 5px; }
+  .shopchk { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border); background: var(--surface); flex-shrink: 0; }
+  .shopchk:hover { border-color: var(--good); }
+
   /* ---------- Modal ---------- */
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: flex-end; justify-content: center; z-index: 20; }
   @media (min-width: 600px) { .overlay { align-items: center; padding: 20px; } }
@@ -437,7 +448,7 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 // ============================================================================
 //  State & helpers
 // ============================================================================
-let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {}, members: {}, allChecks: {}, votes: {}, colors: [...DEFAULT_COLORS], prefs: {} };
+let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {}, members: {}, allChecks: {}, votes: {}, colors: [...DEFAULT_COLORS], prefs: {}, alerts: {}, alertDone: {}, list: {} };
 Object.defineProperty(state, 'checks', { get() { return state.allChecks[weekKey(selectedWeekStart())] || {}; } });
 let me = null, user = null, db = null, root = null;
 let feed = [], view = 'week', boardFilter = 'all', ckPerson = null, ckWeekOffset = 0, feedShowChecks = true;
@@ -574,6 +585,11 @@ function boot() {
   root.child('presence').on('value', s => { state.presence = s.val() || {}; if (view === 'board') render(); });
   root.child('members').on('value', s => { state.members = s.val() || {}; if (view === 'members') render(); });
   root.child('votes').on('value', s => { state.votes = s.val() || {}; render(); });
+  root.child('alerts').on('value', s => { state.alerts = s.val() || {}; if (view === 'week' || view === 'members') render(); });
+  root.child('alertDone/' + weekKey(new Date())).on('value', s => { state.alertDone = s.val() || {}; if (view === 'week') render(); });
+  root.child('list').on('value', s => { state.list = s.val() || {}; if (view === 'week') render(); });
+  // seed the one alert the house asked for, once
+  root.child('alerts').transaction(cur => cur ? undefined : { cardboard: { name: 'Cardboard recycling', emoji: '📦', dow: 3, time: '18:00', note: 'Take it out Thursday — pickup is Friday morning', order: 0 } });
   root.child('colors').on('value', s => { const v = s.val() || {}; state.colors = [0, 1, 2].map(i => v[i] || DEFAULT_COLORS[i]); applyColors(state.colors); if (view === 'members') render(); });
   root.child('prefs/' + me).on('value', s => { state.prefs = s.val() || {}; const t = state.prefs.theme; if (t && t !== currentTheme) applyTheme(t); if (view === 'members') render(); });
   // keep the push token fresh on devices where reminders are already on
@@ -774,6 +790,41 @@ function renderReminders() {
     <div class="row wrap" style="margin-top:14px"><button class="btn sm" id="remTest" ${sup.ok ? '' : 'disabled'}>Send a test notification</button><span class="hint">${perm === 'granted' ? `enabled on ${tokens || 1} device${tokens === 1 ? '' : 's'}` : perm === 'denied' ? 'blocked in device settings' : 'not enabled on this device yet'}</span></div>
   </div>`;
 }
+// ---- House alerts (recurring, e.g. cardboard out on Thursday) ----
+function addAlert(name, dow, time, note, emoji) { const id = root.child('alerts').push().key; commit({ [`alerts/${id}`]: { name, dow, time, note: note || '', emoji: emoji || '🔔', order: Object.keys(state.alerts).length } }, `added a house alert: ${name} (${DAYS[dow]}s at ${time})`); }
+function removeAlert(id) { const a = state.alerts[id]; if (!a) return; confirmModal(`Remove "${a.name}"?`, 'Removes the alert for everyone.', () => commit({ [`alerts/${id}`]: null }, `removed the house alert "${a.name}"`)); }
+function toggleAlertSub(id, on) { root.child(`prefs/${me}/alerts/${id}`).set(on ? true : null); if (on) registerPush(true); }
+function markAlertDone(id) { const a = state.alerts[id]; const wk = weekKey(new Date()); const cur = (state.alertDone || {})[id];
+  if (cur) { if (cur.by !== me) return toast(`Only ${state.people[cur.by]} can undo that`); commit({ [`alertDone/${wk}/${id}`]: null }, `un-did "${a.name}"`); }
+  else commit({ [`alertDone/${wk}/${id}`]: { by: me, ts: firebase.database.ServerValue.TIMESTAMP } }, `took care of "${a.name}" ✓`); }
+function renderAlertBanner() {
+  if (ckWeekOffset !== 0) return ''; const today = todayIdx(); const tomorrow = (today + 1) % 7;
+  const items = Object.entries(state.alerts).filter(([, a]) => a && (a.dow === today || a.dow === tomorrow)).sort((a, b) => (a[1].dow === today ? 0 : 1) - (b[1].dow === today ? 0 : 1));
+  if (!items.length) return '';
+  return `<div class="card alertcard">${items.map(([id, a]) => { const done = (state.alertDone || {})[id]; const isToday = a.dow === today;
+    return `<div class="alertrow"><button class="catchk ${done ? 'on p' + (done.by ?? 0) : ''} ${done && done.by !== me ? 'locked' : ''}" data-alert="${id}" aria-label="Done">${done ? '✓' : ''}</button><div class="grow"><div class="nm">${a.emoji || '🔔'} ${esc(a.name)} <span class="hint">· ${isToday ? 'today' : 'tomorrow'} by ${esc(a.time)}</span></div><div class="st">${done ? `<b class="ok">Done</b> ${done.ts ? 'at ' + new Date(done.ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''} · ${esc(state.people[done.by] ?? '')}` : `<span class="${isToday ? 'pending' : 'hint'}">${esc(a.note || '')}</span>`}</div></div></div>`; }).join('')}</div>`;
+}
+function renderAlertsSettings() {
+  const mine = (state.prefs && state.prefs.alerts) || {}; const sup = pushSupport();
+  const rows = Object.entries(state.alerts).sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0)).map(([id, a]) => `<div class="alertset"><div class="grow"><b>${a.emoji || '🔔'} ${esc(a.name)}</b><div class="hint">${DAYS[a.dow]}s at ${esc(a.time)}${a.note ? ' · ' + esc(a.note) : ''}</div></div>
+      <label class="row" style="gap:6px"><span class="hint">Notify me</span><input type="checkbox" class="alert-sub" data-id="${id}" ${mine[id] ? 'checked' : ''} ${sup.ok ? '' : 'disabled'} style="width:22px;height:22px;accent-color:var(--accent)"></label><button class="more rm-alert" data-id="${id}" title="Remove">×</button></div>`).join('');
+  return `<h2>House alerts</h2><div class="card">
+    ${rows || '<div class="empty">No alerts yet</div>'}
+    <div class="addrow"><form id="alertForm" class="row wrap" style="gap:8px"><input type="text" name="name" placeholder="e.g. Trash cans to the curb" required style="flex:1 1 160px"><select name="dow" class="sel">${DAYS.map((d, i) => `<option value="${i}" ${i === 3 ? 'selected' : ''}>${d}</option>`).join('')}</select><input type="time" name="time" class="text" value="18:00" style="padding:6px 8px"><input type="text" name="note" placeholder="note (optional)" style="flex:1 1 140px"><button class="btn sm" type="submit">Add</button></form></div>
+  </div><p class="hint" style="margin:8px 2px 0">Alerts show up on My Week the day before and the day of; anyone can mark them done. Turn on "Notify me" to get a push at that time (only if it hasn't been done yet).</p>`;
+}
+
+// ---- Shared shopping / "we're out of" list ----
+function addListItem(text) { text = text.trim(); if (!text) return; const id = root.child('list').push().key; commit({ [`list/${id}`]: { text, by: me, ts: firebase.database.ServerValue.TIMESTAMP } }, `added "${text}" to the shopping list`); }
+function removeListItem(id) { const it = state.list[id]; if (!it) return; commit({ [`list/${id}`]: null }, `cleared "${it.text}" from the shopping list`); toast(`Got ${it.text}`, { label: 'Undo', fn: () => commit({ [`list/${id}`]: it }, `put "${it.text}" back on the shopping list`) }); }
+function renderShopping() {
+  if (ckWeekOffset !== 0) return '';
+  const items = Object.entries(state.list).sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0));
+  const rows = items.map(([id, it]) => `<div class="shoprow"><button class="shopchk" data-id="${id}" aria-label="Got it"></button><div class="grow"><div class="nm">${esc(it.text)}</div><div class="st"><span class="dot p${it.by ?? 0}"></span>${esc(state.people[it.by] ?? '')} · ${ago(it.ts)}</div></div></div>`).join('');
+  return `<div class="card shopcard"><div class="row" style="padding:12px 14px 6px"><span style="font-size:18px">🛒</span><b>We're out of</b><span class="grow"></span><span class="hint">${items.length ? items.length + ' item' + (items.length === 1 ? '' : 's') + ' · tap the circle when bought' : 'nothing right now'}</span></div>
+    ${rows}
+    <form id="shopForm" class="row" style="padding:8px 14px 12px;gap:8px"><input type="text" name="text" placeholder="Add something we need…" autocomplete="off" style="flex:1;padding:8px 10px;border-radius:9px;border:1px solid var(--border);background:var(--surface)"><button class="btn sm" type="submit">Add</button></form></div>`;
+}
 function addMember(slot, email) {
   email = email.trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('That doesn\'t look like an email');
   commit({ [`members/${emailKey(email)}`]: { slot, email, addedBy: me } }, `added ${email} as ${state.people[slot]}`);
@@ -809,7 +860,7 @@ function renderTabs() {
 function render() {
   if (!booted) return;
   document.documentElement.style.setProperty('--top-h', document.querySelector('.topbar').offsetHeight + 'px');
-  const active = document.activeElement; if (active && (active.classList.contains('name-in') || active.classList.contains('pn') || active.id === 'myColorHex' || active.id === 'myColor')) return; // don't clobber typing
+  const active = document.activeElement; if (active && (active.classList.contains('name-in') || active.classList.contains('pn') || active.id === 'myColorHex' || active.id === 'myColor' || (active.form && active.form.id === 'shopForm') || (active.form && active.form.id === 'alertForm'))) return; // don't clobber typing
   renderTabs();
   const v = $('view');
   if (view === 'board') v.innerHTML = renderBoard();
@@ -917,7 +968,7 @@ function renderWeek() {
   }).join('');
   const rots = active.filter(t => t.who === 'rot');
   const rotNote = rots.length ? `<p class="rotnote">Rotation this week: ${rots.map(t => `${esc(t.name)} → <b>${esc(state.people[rotAssignee(t, wk)])}</b>`).join(' · ')}</p>` : '';
-  return `${renderVoteBanner()}${renderWrapCard()}${renderCats()}<div class="card pad">
+  return `${renderVoteBanner()}${renderWrapCard()}${renderAlertBanner()}${renderCats()}${renderShopping()}<div class="card pad">
       <div class="weeknav"><button id="wkPrev" aria-label="Previous week">‹</button><div class="lbl">${label}<div class="hint" style="font-weight:400">${sub}</div></div><button id="wkNext" aria-label="Next week" ${ckWeekOffset >= 0 ? 'disabled style="opacity:.4"' : ''}>›</button></div>
       <div class="scorecards" style="margin-top:12px">${cards}</div>
       ${rotNote}
@@ -1023,6 +1074,7 @@ function renderMembers() {
     <div class="card">${rows}</div>
     <p class="hint" style="margin:8px 2px 0">Only emails listed here can open the board. Add each person's Google account next to their name; they sign in with it and everything they do is tagged with their name.</p>
     ${renderReminders()}
+    ${renderAlertsSettings()}
     <h2>Appearance</h2>
     <div class="card pad">
       <div class="hint" style="margin-bottom:8px">Theme — just for you, on every device you sign in on</div>
@@ -1081,6 +1133,12 @@ function wire() {
   const rt = $('remTime'); if (rt) rt.onchange = e => setReminders({ time: e.target.value || '18:00' });
   const rw = $('remWrap'); if (rw) rw.onchange = e => setReminders({ wrap: e.target.checked });
   const rtst = $('remTest'); if (rtst) rtst.onclick = testNotification;
+  v.querySelectorAll('.alert-sub').forEach(el => el.onchange = e => toggleAlertSub(el.dataset.id, e.target.checked));
+  v.querySelectorAll('.rm-alert').forEach(b => b.onclick = () => removeAlert(b.dataset.id));
+  const af = $('alertForm'); if (af) af.onsubmit = e => { e.preventDefault(); const fd = new FormData(af); addAlert(String(fd.get('name')).trim(), +fd.get('dow'), fd.get('time') || '18:00', String(fd.get('note') || '').trim()); af.reset(); };
+  v.querySelectorAll('[data-alert]').forEach(b => b.onclick = () => markAlertDone(b.dataset.alert));
+  const sf = $('shopForm'); if (sf) sf.onsubmit = e => { e.preventDefault(); addListItem(sf.text.value); sf.reset(); sf.text.focus(); };
+  v.querySelectorAll('.shopchk').forEach(b => b.onclick = () => removeListItem(b.dataset.id));
   // appearance
   v.querySelectorAll('.theme').forEach(b => b.onclick = () => setTheme(b.dataset.theme));
   const mc = $('myColor'); if (mc) { mc.oninput = e => { $('myColorHex').value = e.target.value; document.documentElement.style.setProperty(`--p${me}`, e.target.value); document.documentElement.style.setProperty(`--p${me}-ink`, inkFor(e.target.value)); }; mc.onchange = e => setMyColor(e.target.value); }
