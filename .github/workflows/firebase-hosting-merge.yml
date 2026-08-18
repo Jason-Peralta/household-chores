@@ -1,0 +1,18 @@
+# Auto-deploys the site to Firebase Hosting whenever main changes.
+# Secret FIREBASE_SERVICE_ACCOUNT_HOUSEHOLD_CHORES_73E50 was created by `firebase init hosting:github`.
+name: Deploy to Firebase Hosting on merge
+on:
+  push:
+    branches:
+      - main
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_HOUSEHOLD_CHORES_73E50 }}
+          channelId: live
+          projectId: household-chores-73e50
