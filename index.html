@@ -197,6 +197,29 @@
   .rotnote { font-size: 12px; color: var(--text-3); }
   .weeksum { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); }
 
+  /* ---------- Notes, cats, stats ---------- */
+  .notebtn { background: transparent; border: none; color: var(--text-3); padding: 2px 4px; border-radius: 6px; display: inline-flex; opacity: .55; }
+  .notebtn:hover, .notebtn.has { opacity: 1; color: var(--accent); }
+  .notebtn.inline { vertical-align: middle; margin-left: 4px; }
+  .notetxt { font-size: 12.5px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .streak { font-size: 11.5px; font-weight: 600; margin-left: 8px; color: var(--warn); white-space: nowrap; }
+  .catcard { margin-bottom: 12px; }
+  .catrow { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--border); }
+  .catrow .nm { font-weight: 500; }
+  .catrow .st { font-size: 12.5px; color: var(--text-2); display: flex; gap: 8px; flex-wrap: wrap; }
+  .catrow .ok { color: var(--good); }
+  .catrow .pending { color: var(--warn); font-weight: 600; }
+  .catchk { width: 40px; height: 40px; border-radius: 12px; border: 2px solid var(--border); background: var(--surface); font-size: 18px; font-weight: 700; color: #fff; flex-shrink: 0; }
+  .catchk.on { border-color: transparent; }
+  .catchk.on.p0 { background: var(--p0); } .catchk.on.p1 { background: var(--p1); } .catchk.on.p2 { background: var(--p2); }
+  .lb { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border); }
+  .lb:first-child { border-top: none; padding-top: 0; }
+  .lb .rank { font-size: 26px; width: 36px; text-align: center; line-height: 1.2; }
+  .lb .pts { font-variant-numeric: tabular-nums; }
+  .hotrow { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .hotrow:last-child { border-bottom: none; }
+  @media (max-width: 759px) { .task .name .row { flex-wrap: nowrap; } }
+
   /* ---------- Feed ---------- */
   .feed { list-style: none; margin: 0; padding: 0; }
   .feed li { display: flex; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 13.5px; align-items: flex-start; }
@@ -334,15 +357,18 @@ const DEFAULT_TASKS = [
   { cat:'monthly', name:'Pay shared bills / split expenses',      effort:2, freq:0.5 },
   { cat:'monthly', name:'Vet visits / cat meds',                  effort:3, freq:0.25 },
 ];
+const NOTE_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>';
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 // ============================================================================
 //  State & helpers
 // ============================================================================
-let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {}, members: {}, checks: {} };
+let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {}, members: {}, allChecks: {} };
+Object.defineProperty(state, 'checks', { get() { return state.allChecks[weekKey(selectedWeekStart())] || {}; } });
 let me = null, user = null, db = null, root = null;
 let feed = [], view = 'board', boardFilter = 'all', ckPerson = null, ckWeekOffset = 0, feedShowChecks = true;
-let checksRef = null, checksWeekKey = null;
+let checksRef = null, checksFrom = null, statsMonthOffset = 0;
+const catRe = /\bcats?\b|litter|kitt/i;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const load = t => (t.effort || 0) * (t.freq || 0);
@@ -439,12 +465,41 @@ function boot() {
   render();
 }
 function subscribeChecks() {
-  const key = weekKey(selectedWeekStart());
-  if (key === checksWeekKey) return;
+  // Load a rolling window of weeks (26 by default, further back if the user navigates there).
+  const want = new Date(); want.setDate(want.getDate() - 7 * 26);
+  const sel = selectedWeekStart(); const from = weekKey(sel < want ? sel : want);
+  if (checksFrom && from >= checksFrom) return;
   if (checksRef) checksRef.off();
-  checksWeekKey = key; checksRef = root.child('checks/' + key);
-  state.checks = {};
-  checksRef.on('value', s => { state.checks = s.val() || {}; if (view === 'week') render(); });
+  checksFrom = from; checksRef = root.child('checks').orderByKey().startAt(from);
+  checksRef.on('value', s => { state.allChecks = s.val() || {}; if (view === 'week' || view === 'stats') render(); });
+}
+function checkDate(wkKey, day) { const [y, m, d] = wkKey.split('-').map(Number); const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() + day); return dt; }
+function dkey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+// Streaks --------------------------------------------------------------
+function personDayStreak(slot) {
+  const days = new Set();
+  for (const [wk, tasks] of Object.entries(state.allChecks)) for (const ch of Object.values(tasks)) for (const [d, c] of Object.entries(ch)) if (c && c.by === slot) days.add(dkey(checkDate(wk, +d)));
+  const cur = new Date(); cur.setHours(0, 0, 0, 0);
+  if (!days.has(dkey(cur))) cur.setDate(cur.getDate() - 1); // today not done yet: streak still alive from yesterday
+  let n = 0; while (days.has(dkey(cur))) { n++; cur.setDate(cur.getDate() - 1); }
+  // longest
+  const sorted = [...days].sort(); let best = 0, run = 0, prev = null;
+  for (const k of sorted) { const [y, m, d] = k.split('-').map(Number); const t = new Date(y, m - 1, d).getTime(); run = (prev !== null && t - prev === 864e5) ? run + 1 : 1; best = Math.max(best, run); prev = t; }
+  return { current: n, best, total: days.size };
+}
+function taskStreak(t) {
+  const tgt = targetFor(t);
+  if (tgt >= 5) { // daily-ish: consecutive days
+    const cur = new Date(); cur.setHours(0, 0, 0, 0);
+    const has = d => !!((state.allChecks[weekKey(d)] || {})[t.id] || {})[(d.getDay() + 6) % 7];
+    if (!has(cur)) cur.setDate(cur.getDate() - 1);
+    let n = 0; while (has(cur)) { n++; cur.setDate(cur.getDate() - 1); }
+    return { n, unit: 'day' };
+  }
+  const ws = startOfWeek(new Date()); const met = d => Object.keys((state.allChecks[weekKey(d)] || {})[t.id] || {}).length >= tgt;
+  if (!met(ws)) ws.setDate(ws.getDate() - 7);
+  let n = 0; while (met(ws)) { n++; ws.setDate(ws.getDate() - 7); }
+  return { n, unit: 'wk' };
 }
 function setPresence() { if (me === null) return; const ref = root.child('presence/' + me); ref.set(true); ref.onDisconnect().set(false); }
 
@@ -470,6 +525,13 @@ function setOn(id, on) { const t = T(id); commit({ [`tasks/${id}/on`]: on }, `${
 function renameTask(id, name) { const t = T(id); name = name.trim(); if (!name || name === t.name) return render(); commit({ [`tasks/${id}/name`]: name }, `renamed "${t.name}" → "${name}"`, id); }
 function removeTask(id) { const t = T(id); confirmModal(`Remove "${t.name}"?`, 'This removes it for everyone. Past check-offs are kept.', () => commit({ [`tasks/${id}`]: null }, `removed "${t.name}"`)); }
 function addTask(cat, name, effort, freq) { const id = root.child('tasks').push().key; const order = Math.max(0, ...state.tasks.map(t => t.order ?? 0)) + 1; commit({ [`tasks/${id}`]: { cat, name, effort, freq, on: true, who: -1, order } }, `added "${name}" (${CATS[cat]}, effort ${effort})`, id); }
+function setNote(id, text) { const t = T(id); text = text.trim(); if ((t.notes || '') === text) return; commit({ [`tasks/${id}/notes`]: text || null }, text ? `updated the note on "${t.name}"` : `cleared the note on "${t.name}"`, id); }
+function openNote(id, editable = true) {
+  const t = T(id); if (!t) return;
+  openModal(t.name, `<p class="hint">Notes — where things are, how you like it done, anything the next person should know.</p><textarea id="noteText" style="min-height:140px;font-family:inherit;font-size:14px" ${editable ? '' : 'readonly'} placeholder="e.g. Litter is under the sink; use the blue scoop">${esc(t.notes || '')}</textarea>`,
+    editable ? [['Save', () => { setNote(id, $('noteText').value); closeModal(); }, 'primary']] : []);
+  setTimeout(() => $('noteText')?.focus(), 50);
+}
 function renamePerson(i, name) { name = name.trim() || DEFAULT_PEOPLE[i]; if (name === state.people[i]) return; commit({ [`people/${i}`]: name }, `renamed ${state.people[i]} → ${name}`); }
 function autoBalance() {
   const { tot } = totals(); const pending = state.tasks.filter(t => t.on && t.who === -1).sort((a, b) => load(b) - load(a));
@@ -478,7 +540,7 @@ function autoBalance() {
   commit(u, `auto-balanced ${pending.length} unassigned task${pending.length === 1 ? '' : 's'}`); toast(`Assigned ${pending.length}`);
 }
 function toggleCheck(t, day) {
-  const wk = checksWeekKey; const cur = (state.checks[t.id] || {})[day];
+  const wk = weekKey(selectedWeekStart()); const cur = (state.checks[t.id] || {})[day];
   const path = `checks/${wk}/${t.id}/${day}`;
   if (cur) commit({ [path]: null }, `un-checked "${t.name}" for ${DAYS[day]}`, t.id, 'check');
   else commit({ [path]: { by: me, ts: firebase.database.ServerValue.TIMESTAMP } }, `checked off "${t.name}" — ${DAYS[day]}`, t.id, 'check');
@@ -505,6 +567,7 @@ function totals() {
 const TABS = [
   ['board', 'Board', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 10h18M9 4v16"/></svg>'],
   ['week', 'My Week', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>'],
+  ['stats', 'Stats', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>'],
   ['feed', 'Activity', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>'],
   ['members', 'House', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z"/></svg>'],
 ];
@@ -521,6 +584,7 @@ function render() {
   const v = $('view');
   if (view === 'board') v.innerHTML = renderBoard();
   else if (view === 'week') v.innerHTML = renderWeek();
+  else if (view === 'stats') v.innerHTML = renderStats();
   else if (view === 'feed') v.innerHTML = renderFeed();
   else v.innerHTML = renderMembers();
   wire();
@@ -556,7 +620,7 @@ function renderBoard() {
     const rows = tasks.map(t => `
       <div class="task ${t.on ? '' : 'off'}" data-id="${t.id}">
         <input type="checkbox" class="chk" data-id="${t.id}" ${t.on ? 'checked' : ''} aria-label="Include">
-        <div class="name"><input class="name-in" data-id="${t.id}" value="${esc(t.name)}"></div>
+        <div class="name"><div class="row" style="gap:6px"><input class="name-in" data-id="${t.id}" value="${esc(t.name)}"><button class="notebtn ${t.notes ? 'has' : ''}" data-id="${t.id}" title="${t.notes ? esc(t.notes) : 'Add a note'}">${NOTE_ICON}</button></div>${t.notes ? `<div class="notetxt">${esc(t.notes)}</div>` : ''}</div>
         <div class="meta">
           <span class="effort" data-id="${t.id}" title="Effort 1–5">${[1, 2, 3, 4, 5].map(n => `<span class="${n <= t.effort ? 'on' : ''}" data-v="${n}">${n}</span>`).join('')}</span>
           <span class="freq"><input type="number" class="freq-in" data-id="${t.id}" value="${t.freq}" min="0" step="0.25"><span class="lbl">×/wk</span></span>
@@ -614,18 +678,63 @@ function renderWeek() {
       const cells = DAYS.map((d, di) => { const c = ch[di]; const on = !!c; const byOther = on && c.by !== undefined && c.by !== ckPerson; const future = isCur && di > tIdx || ckWeekOffset > 0;
         return `<button class="day ${on ? 'on p' + (c.by ?? ckPerson) : ''} ${isCur && di === tIdx ? 'today' : ''} ${future && !on ? 'future' : ''}" data-id="${t.id}" data-day="${di}" title="${d}${on ? ' — done by ' + esc(state.people[c.by] ?? '') : ''}"><span class="d">${d.slice(0, 2)}</span>${byOther ? '<span class="byo"></span>' : ''}</button>`; }).join('');
       const rot = t.who === 'rot' ? `<span class="cat">↻ rotation</span>` : '';
-      return `<div class="ck" data-id="${t.id}"><div class="name">${esc(t.name)}${rot}<span class="cat">${t.freq < 1 ? 'as needed' : ''}</span></div><div class="prog ${complete ? 'done' : ''}">${complete ? '✓ ' : ''}${n}/${tgt}${t.freq < 1 ? '' : ''} · ${t.effort}pt${t.effort > 1 ? 's' : ''} each</div><div class="days">${cells}</div></div>`;
+      const st = taskStreak(t); const streak = st.n >= 2 ? `<span class="streak" title="${st.n} ${st.unit}s in a row">🔥 ${st.n}${st.unit === 'day' ? 'd' : 'w'}</span>` : '';
+      const note = t.notes ? `<button class="notebtn has inline" data-id="${t.id}" title="${esc(t.notes)}">${NOTE_ICON}</button>` : '';
+      return `<div class="ck" data-id="${t.id}"><div class="name">${esc(t.name)}${note}${rot}<span class="cat">${t.freq < 1 ? 'as needed' : ''}</span>${streak}</div><div class="prog ${complete ? 'done' : ''}">${complete ? '✓ ' : ''}${n}/${tgt}${t.freq < 1 ? '' : ''} · ${t.effort}pt${t.effort > 1 ? 's' : ''} each</div><div class="days">${cells}</div></div>`;
     }).join('')}</div>`;
   }).join('');
   const rots = active.filter(t => t.who === 'rot');
   const rotNote = rots.length ? `<p class="rotnote">Rotation this week: ${rots.map(t => `${esc(t.name)} → <b>${esc(state.people[rotAssignee(t, wk)])}</b>`).join(' · ')}</p>` : '';
-  return `<div class="card pad">
+  return `${renderCats()}<div class="card pad">
       <div class="weeknav"><button id="wkPrev" aria-label="Previous week">‹</button><div class="lbl">${label}<div class="hint" style="font-weight:400">${sub}</div></div><button id="wkNext" aria-label="Next week" ${ckWeekOffset >= 0 ? 'disabled style="opacity:.4"' : ''}>›</button></div>
       <div class="scorecards" style="margin-top:12px">${cards}</div>
       ${rotNote}
     </div>
     <div class="row" style="margin:16px 0 4px"><h1 style="margin:0;font-size:18px">${ckPerson === me ? 'Your' : esc(state.people[ckPerson]) + "'s"} checklist</h1><span class="grow"></span><span class="hint">tap a day to check it off</span></div>
     ${groups || '<div class="card empty">No tasks assigned to ' + esc(state.people[ckPerson]) + ' yet — assign some on the Board.</div>'}`;
+}
+
+// ---------- Cats ----------
+function renderCats() {
+  if (ckWeekOffset !== 0) return '';
+  const cats = state.tasks.filter(t => t.on && catRe.test(t.name) && targetFor(t) >= 5);
+  if (!cats.length) return '';
+  const wk = weekKey(new Date()); const ti = todayIdx(); const y = new Date(); y.setDate(y.getDate() - 1); const ywk = weekKey(y), yi = (y.getDay() + 6) % 7;
+  const rows = cats.map(t => {
+    const c = ((state.allChecks[wk] || {})[t.id] || {})[ti];
+    const yc = ((state.allChecks[ywk] || {})[t.id] || {})[yi];
+    const time = c && c.ts ? new Date(c.ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+    const who = c ? esc(state.people[c.by] ?? '') : '';
+    const daily = targetFor(t) >= 5;
+    const status = c ? `<b class="ok">✓ ${daily ? 'Done' : 'Done today'}</b> ${time ? `at ${time}` : ''} · ${who}` : (daily ? `<span class="pending">Not yet today</span>` : `<span class="hint">${Object.keys((state.allChecks[wk] || {})[t.id] || {}).length}/${targetFor(t)} this week</span>`);
+    const ystr = yc && daily ? `<span class="hint">yesterday ${yc.ts ? new Date(yc.ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''} · ${esc(state.people[yc.by] ?? '')}</span>` : '';
+    return `<div class="catrow"><button class="catchk ${c ? 'on p' + (c.by ?? 0) : ''}" data-id="${t.id}" aria-label="Toggle">${c ? '✓' : ''}</button><div class="grow"><div class="nm">${esc(t.name)}</div><div class="st">${status} ${ystr}</div></div></div>`;
+  }).join('');
+  return `<div class="card catcard"><div class="row" style="padding:12px 14px 6px"><span style="font-size:18px">🐈</span><b>Cats today</b><span class="grow"></span><span class="hint">tap to log with the time</span></div>${rows}</div>`;
+}
+
+// ---------- Stats ----------
+function renderStats() {
+  subscribeChecks();
+  const now = new Date(); const m0 = new Date(now.getFullYear(), now.getMonth() + statsMonthOffset, 1); const m1 = new Date(m0.getFullYear(), m0.getMonth() + 1, 1);
+  const label = m0.toLocaleDateString([], { month: 'long', year: 'numeric' });
+  const per = state.people.map((p, i) => ({ i, p, pts: 0, n: 0, byTask: {}, days: new Set() }));
+  for (const [wk, tasks] of Object.entries(state.allChecks)) for (const [tid, ch] of Object.entries(tasks)) { const t = T(tid); for (const [d, c] of Object.entries(ch)) { if (!c || c.by === undefined || !per[c.by]) continue; const dt = checkDate(wk, +d); if (dt < m0 || dt >= m1) continue; const s = per[c.by]; s.pts += t ? t.effort : 1; s.n++; s.days.add(dkey(dt)); s.byTask[tid] = (s.byTask[tid] || 0) + 1; } }
+  const ranked = [...per].sort((a, b) => b.pts - a.pts); const max = Math.max(1, ...per.map(s => s.pts));
+  const medals = ['🥇', '🥈', '🥉'];
+  const board = ranked.map((s, r) => { const fav = Object.entries(s.byTask).sort((a, b) => b[1] - a[1])[0]; const ft = fav ? T(fav[0]) : null;
+    return `<div class="lb"><div class="rank">${s.pts ? medals[r] : '—'}</div><div class="grow"><div class="row"><span class="dot p${s.i}"></span><b>${esc(s.p)}</b><span class="grow"></span><b class="pts">${fmt(s.pts)} pts</b></div><div class="track"><div class="fill p${s.i}" style="width:${s.pts / max * 100}%"></div></div><div class="hint" style="margin-top:4px">${s.n} check-off${s.n === 1 ? '' : 's'} on ${s.days.size} day${s.days.size === 1 ? '' : 's'}${ft ? ` · most often: ${esc(ft.name)} (${fav[1]}×)` : ''}</div></div></div>`; }).join('');
+  const streaks = state.people.map((p, i) => { const st = personDayStreak(i); return `<div class="person"><div class="nm"><span class="dot p${i}"></span>${esc(p)}</div><div class="big">${st.current > 0 ? '🔥' : ''}${st.current}<small>day${st.current === 1 ? '' : 's'}</small></div><div class="sub">current streak · best ${st.best}</div></div>`; }).join('');
+  const hot = state.tasks.filter(t => t.on).map(t => ({ t, s: taskStreak(t) })).filter(x => x.s.n >= 2).sort((a, b) => b.s.n - a.s.n).slice(0, 8);
+  const hotHtml = hot.length ? hot.map(x => `<div class="hotrow"><span class="grow">${esc(x.t.name)}</span><span class="hint">${x.t.who === 'rot' ? 'rotation' : x.t.who >= 0 ? esc(state.people[x.t.who]) : ''}</span><b>🔥 ${x.s.n} ${x.s.unit}${x.s.n === 1 ? '' : 's'}</b></div>`).join('') : '<div class="empty">Streaks show up once a task has been done two days (or weeks) in a row.</div>';
+  return `<div class="card pad">
+      <div class="weeknav"><button id="moPrev" aria-label="Previous month">‹</button><div class="lbl">${label}<div class="hint" style="font-weight:400">leaderboard · points = effort per check-off</div></div><button id="moNext" aria-label="Next month" ${statsMonthOffset >= 0 ? 'disabled style="opacity:.4"' : ''}>›</button></div>
+      <div style="margin-top:12px">${board}</div>
+    </div>
+    <h2>Streaks</h2>
+    <div class="card pad"><div class="people">${streaks}</div><p class="hint" style="margin:10px 0 0">A day counts if you checked off at least one task. Today doesn't break the streak until midnight.</p></div>
+    <h2>On a roll</h2>
+    <div class="card">${hotHtml}</div>`;
 }
 
 // ---------- Feed ----------
@@ -676,6 +785,10 @@ function wire() {
   const wn = $('wkNext'); if (wn) wn.onclick = () => { if (ckWeekOffset < 0) { ckWeekOffset++; subscribeChecks(); render(); } };
   v.querySelectorAll('.score').forEach(el => el.onclick = () => { ckPerson = +el.dataset.i; render(); });
   v.querySelectorAll('.day').forEach(el => el.onclick = () => { const t = T(el.dataset.id); if (t) toggleCheck(t, +el.dataset.day); });
+  v.querySelectorAll('.catchk').forEach(el => el.onclick = () => { const t = T(el.dataset.id); if (t) { ckWeekOffset = 0; toggleCheck(t, todayIdx()); } });
+  v.querySelectorAll('.notebtn').forEach(el => el.onclick = e => { e.preventDefault(); openNote(el.dataset.id, true); });
+  const mp = $('moPrev'); if (mp) mp.onclick = () => { statsMonthOffset--; render(); };
+  const mn = $('moNext'); if (mn) mn.onclick = () => { if (statsMonthOffset < 0) { statsMonthOffset++; render(); } };
   // feed
   const fc = $('feedChecks'); if (fc) fc.onchange = e => { feedShowChecks = e.target.checked; render(); };
   // members
