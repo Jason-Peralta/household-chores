@@ -9,8 +9,15 @@
 <meta name="apple-mobile-web-app-title" content="Chores">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232a78d6'/%3E%3Cpath d='M18 33l10 10 18-20' fill='none' stroke='%23fff' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%232a78d6'/%3E%3Cpath d='M18 33l10 10 18-20' fill='none' stroke='%23fff' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
-<link rel="manifest" href='data:application/manifest+json,{"name":"Household Chores","short_name":"Chores","start_url":".","display":"minimal-ui","background_color":"%23f5f5f3","theme_color":"%232a78d6","icons":[{"src":"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%232a78d6%27/%3E%3Cpath d=%27M18 33l10 10 18-20%27 fill=%27none%27 stroke=%27%23fff%27 stroke-width=%277%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E","sizes":"any","type":"image/svg+xml"}]}'>
+<script>
+  // When served from Firebase Hosting the sign-in helper is same-origin, so full-screen
+  // "app mode" on iPhone works. Elsewhere (GitHub Pages) we open in the browser instead.
+  window.SAME_ORIGIN_AUTH = /\.(web\.app|firebaseapp\.com)$/.test(location.hostname);
+  if (window.SAME_ORIGIN_AUTH) { const m = document.createElement('meta'); m.name = 'apple-mobile-web-app-capable'; m.content = 'yes'; document.head.appendChild(m); }
+</script>
+<link rel="manifest" id="manifestLink" href='data:application/manifest+json,{"name":"Household Chores","short_name":"Chores","start_url":".","display":"minimal-ui","background_color":"%23f5f5f3","theme_color":"%232a78d6","icons":[{"src":"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%232a78d6%27/%3E%3Cpath d=%27M18 33l10 10 18-20%27 fill=%27none%27 stroke=%27%23fff%27 stroke-width=%277%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E","sizes":"any","type":"image/svg+xml"}]}'>
 <title>Household Chores</title>
+<script>if (window.SAME_ORIGIN_AUTH) { const l = document.getElementById('manifestLink'); l.href = l.href.replace('"display":"minimal-ui"', '"display":"standalone"'); }</script>
 <style>
   :root {
     color-scheme: light;
@@ -290,7 +297,7 @@
 <script>
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDmSWISIlqtW7z_GEaAQwDoga7eCUyeYF4",
-  authDomain: "household-chores-73e50.firebaseapp.com",
+  authDomain: window.SAME_ORIGIN_AUTH ? location.hostname : "household-chores-73e50.firebaseapp.com",
   databaseURL: "https://household-chores-73e50-default-rtdb.firebaseio.com",
   projectId: "household-chores-73e50",
   storageBucket: "household-chores-73e50.firebasestorage.app",
@@ -403,9 +410,12 @@ root = db.ref('houses/' + HOUSE_KEY);
 auth.getRedirectResult().catch(() => {});
 const provider = new firebase.auth.GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
+const IS_STANDALONE = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
 $('btnSignIn').onclick = () => {
   $('gateErr').textContent = '';
+  if (window.SAME_ORIGIN_AUTH && IS_STANDALONE) { auth.signInWithRedirect(provider); return; }
   auth.signInWithPopup(provider).catch(e => {
+    if (e.code === 'auth/popup-blocked' && window.SAME_ORIGIN_AUTH) { auth.signInWithRedirect(provider); return; }
     if (e.code === 'auth/popup-blocked') $('gateErr').innerHTML = 'Your browser blocked the sign-in window. Tap <b>Sign in with Google</b> again — if it keeps happening, allow pop-ups for this site (iPhone: Settings → Safari → turn off "Block Pop-ups") and retry.';
     else if (e.code === 'auth/operation-not-supported-in-this-environment') $('gateErr').textContent = 'Sign-in can\'t run inside this app view. Open the link in Safari or Chrome instead.';
     else if (e.code === 'auth/unauthorized-domain') $('gateErr').textContent = 'This address isn\'t authorized for sign-in yet — ask Jason.';
@@ -765,7 +775,7 @@ function renderMembers() {
     <p class="hint" style="margin:8px 2px 0">Only emails listed here can open the board. Add each person's Google account next to their name; they sign in with it and everything they do is tagged with their name.</p>
     <h2>Tools</h2>
     <div class="card pad row wrap"><button class="btn sm" id="btnExport">Export plan</button><button class="btn sm" id="btnReset">Reset task list</button><span class="grow"></span><button class="btn sm ghost" id="btnSignOut">Sign out (${esc(user?.email || '')})</button></div>
-    <p class="hint" style="margin:8px 2px 0">On your phone: bookmark this page or use "Add to Home Screen" for a quick icon (it opens in your browser, which is what keeps sign-in working on iPhone).</p>`;
+    <p class="hint" style="margin:8px 2px 0">${window.SAME_ORIGIN_AUTH ? 'On your phone: use "Add to Home Screen" for a full-screen app icon.' : 'On your phone: bookmark this page or use "Add to Home Screen" for a quick icon (it opens in your browser, which is what keeps sign-in working on iPhone).'}</p>`;
 }
 
 // ---------- Wiring ----------
