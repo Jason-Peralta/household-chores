@@ -1,0 +1,22 @@
+{
+  "name": "Household Chores",
+  "short_name": "Chores",
+  "id": "./",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f5f3",
+  "theme_color": "#2a78d6",
+  "description": "Our house chore board: checklist, cats, shopping list, reminders.",
+  "shortcuts": [
+    { "name": "My Week", "url": "./?view=week" },
+    { "name": "Board", "url": "./?view=board" },
+    { "name": "Stats", "url": "./?view=stats" }
+  ],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
