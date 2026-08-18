@@ -15,7 +15,7 @@
   window.SAME_ORIGIN_AUTH = /\.(web\.app|firebaseapp\.com)$/.test(location.hostname);
   if (window.SAME_ORIGIN_AUTH) { const m = document.createElement('meta'); m.name = 'apple-mobile-web-app-capable'; m.content = 'yes'; document.head.appendChild(m); }
 </script>
-<link rel="manifest" id="manifestLink" href='data:application/manifest+json,{"name":"Household Chores","short_name":"Chores","start_url":".","display":"minimal-ui","background_color":"%23f5f5f3","theme_color":"%232a78d6","icons":[{"src":"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%232a78d6%27/%3E%3Cpath d=%27M18 33l10 10 18-20%27 fill=%27none%27 stroke=%27%23fff%27 stroke-width=%277%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E","sizes":"any","type":"image/svg+xml"}]}'>
+<link rel="manifest" id="manifestLink" href='data:application/manifest+json,{"name":"Household Chores","short_name":"Chores","start_url":".","display":"minimal-ui","background_color":"%23f5f5f3","theme_color":"%232a78d6","shortcuts":[{"name":"My Week","url":"./?view=week"},{"name":"Board","url":"./?view=board"},{"name":"Stats","url":"./?view=stats"}],"icons":[{"src":"icon-192.png","sizes":"192x192","type":"image/png"},{"src":"icon-512.png","sizes":"512x512","type":"image/png"},{"src":"icon-maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]}'>
 <title>Household Chores</title>
 <script>try { document.documentElement.setAttribute('data-theme', localStorage.getItem('chore-theme') || 'system'); } catch (e) { document.documentElement.setAttribute('data-theme', 'system'); }</script>
 <script>if (window.SAME_ORIGIN_AUTH) { const l = document.getElementById('manifestLink'); l.href = l.href.replace('"display":"minimal-ui"', '"display":"standalone"'); }</script>
@@ -108,7 +108,8 @@
   select.sel { appearance: none; -webkit-appearance: none; padding-right: 26px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
   .toast { position: fixed; bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 14px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 30; white-space: nowrap; }
   @media (min-width: 760px) { .toast { bottom: 24px; } }
-  .toast.show { opacity: 1; }
+  .toast.show { opacity: 1; pointer-events: auto; }
+  .toastbtn { margin-left: 12px; background: transparent; border: 1px solid color-mix(in srgb, var(--bg) 40%, transparent); color: var(--bg); padding: 4px 10px; border-radius: 7px; font-weight: 600; font-size: 13px; }
   .empty { text-align: center; color: var(--text-3); padding: 28px 12px; }
 
   /* ---------- Sign-in ---------- */
@@ -138,6 +139,7 @@
   .scorepin { position: sticky; top: calc(var(--top-h, 53px) + 6px); z-index: 4; }
   @media (max-width: 759px) { .scorepin { padding: 10px 12px; } .scorepin .people { gap: 8px; } .scorepin .person { padding: 8px; } .scorepin .person .big { font-size: 18px; } .scorepin .person .sub { display: none; } .scorepin .verdict { margin-top: 8px; padding: 6px 10px; font-size: 12.5px; } }
   .vote { border-color: var(--warn); margin-bottom: 12px; }
+  .wrap { margin-bottom: 12px; border-color: var(--accent); }
 
   /* ---------- Task list ---------- */
   .tasklist { padding: 4px 0; }
@@ -220,6 +222,8 @@
   .notebtn { background: transparent; border: none; color: var(--text-3); padding: 2px 4px; border-radius: 6px; display: inline-flex; opacity: .55; }
   .notebtn:hover, .notebtn.has { opacity: 1; color: var(--accent); }
   .notebtn.inline { vertical-align: middle; margin-left: 4px; }
+  .photobox img { max-width: 100%; max-height: 260px; border-radius: 10px; border: 1px solid var(--border); display: block; }
+  .photobox { margin: 4px 0; }
   .notetxt { font-size: 12.5px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .streak { font-size: 11.5px; font-weight: 600; margin-left: 8px; color: var(--warn); white-space: nowrap; }
   .catcard { margin-bottom: 12px; }
@@ -235,6 +239,8 @@
   .lb:first-child { border-top: none; padding-top: 0; }
   .lb .rank { font-size: 26px; width: 36px; text-align: center; line-height: 1.2; }
   .lb .pts { font-variant-numeric: tabular-nums; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .badge { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--surface-3); font-weight: 600; }
   .hotrow { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 14px; }
   .hotrow:last-child { border-bottom: none; }
   @media (max-width: 759px) { .task .name .row { flex-wrap: nowrap; } }
@@ -278,6 +284,8 @@
   .updatebar { position: fixed; left: 12px; right: 12px; bottom: calc(var(--nav-h) + 12px + env(safe-area-inset-bottom)); z-index: 25; background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 12px; display: flex; align-items: center; gap: 12px; font-size: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
   .updatebar span { flex: 1; }
   @media (min-width: 760px) { .updatebar { bottom: 20px; left: auto; right: 20px; width: 380px; } }
+
+  .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 40; }
 
   /* ---------- Modal ---------- */
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: flex-end; justify-content: center; z-index: 20; }
@@ -326,6 +334,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script>
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDmSWISIlqtW7z_GEaAQwDoga7eCUyeYF4",
@@ -351,6 +360,7 @@ const THEMES = [
 ];
 const DEFAULT_COLORS = ['#2a78d6', '#eb6834', '#1baf7a'];
 const PRESET_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#e6399b', '#8e44ad', '#e74c3c', '#f1c40f', '#16a085', '#ff7eb6', '#00b4d8', '#7c5cff', '#2ecc71', '#ff9f43', '#5d4037', '#607d8b'];
+const VAPID_KEY = 'BObg-Jnozc7qSd8TS0Gqj8z9Wf_LKzMKaONbjEH-tIUyiv9U2qoP54D-2k9VdhTX4uRDAs4o1WjU-hXhO6BUtIE';
 let currentTheme = 'system';
 try { currentTheme = localStorage.getItem('chore-theme') || 'system'; } catch {}
 function applyTheme(t) {
@@ -427,7 +437,7 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 // ============================================================================
 //  State & helpers
 // ============================================================================
-let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {}, members: {}, allChecks: {}, votes: {}, colors: [...DEFAULT_COLORS] };
+let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {}, members: {}, allChecks: {}, votes: {}, colors: [...DEFAULT_COLORS], prefs: {} };
 Object.defineProperty(state, 'checks', { get() { return state.allChecks[weekKey(selectedWeekStart())] || {}; } });
 let me = null, user = null, db = null, root = null;
 let feed = [], view = 'week', boardFilter = 'all', ckPerson = null, ckWeekOffset = 0, feedShowChecks = true;
@@ -441,13 +451,17 @@ const whoRaw = v => v === 'rot' ? 'rot' : (v === undefined || v === null || v ==
 const pname = i => i === 'rot' ? 'Rotate' : (i >= 0 ? state.people[i] : 'unassigned');
 const emailKey = e => String(e).trim().toLowerCase().replace(/\./g, ',');
 const initials = n => String(n || '?').trim().slice(0, 1).toUpperCase();
-function toast(msg) { const el = $('toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), 1900); }
+function toast(msg, action) {
+  const el = $('toast'); el.innerHTML = ''; el.append(document.createTextNode(msg));
+  if (action) { const b = document.createElement('button'); b.className = 'toastbtn'; b.textContent = action.label; b.onclick = () => { el.classList.remove('show'); action.fn(); }; el.appendChild(b); }
+  el.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), action ? 8000 : 1900);
+}
 const T = id => state.tasks.find(t => t.id === id);
 
 // Week helpers (weeks start Monday, local time)
 function startOfWeek(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); const dow = (x.getDay() + 6) % 7; x.setDate(x.getDate() - dow); return x; }
 function weekKey(d) { const s = startOfWeek(d); return `${s.getFullYear()}-${String(s.getMonth() + 1).padStart(2, '0')}-${String(s.getDate()).padStart(2, '0')}`; }
-function weekIndex(d) { return Math.floor((startOfWeek(d).getTime() - startOfWeek(new Date(2024, 0, 1)).getTime()) / (7 * 864e5)); }
+function weekIndex(d) { return Math.round((startOfWeek(d).getTime() - startOfWeek(new Date(2024, 0, 1)).getTime()) / (7 * 864e5)); } // round: DST shifts the difference by an hour
 function selectedWeekStart() { const s = startOfWeek(new Date()); s.setDate(s.getDate() + ckWeekOffset * 7); return s; }
 function todayIdx() { return (new Date().getDay() + 6) % 7; }
 // Rotation: rotating tasks cycle through people, staggered so nobody gets them all in the same week
@@ -538,6 +552,7 @@ function boot() {
   $('gate').style.display = 'none'; $('app').classList.add('ready');
   if (booted) { render(); return; } booted = true;
   ckPerson = me;
+  try { const qv = new URLSearchParams(location.search).get('view'); if (qv && TABS.some(t => t[0] === qv)) view = qv; } catch {}
 
   db.ref('.info/connected').on('value', s => {
     const on = !!s.val();
@@ -560,7 +575,10 @@ function boot() {
   root.child('members').on('value', s => { state.members = s.val() || {}; if (view === 'members') render(); });
   root.child('votes').on('value', s => { state.votes = s.val() || {}; render(); });
   root.child('colors').on('value', s => { const v = s.val() || {}; state.colors = [0, 1, 2].map(i => v[i] || DEFAULT_COLORS[i]); applyColors(state.colors); if (view === 'members') render(); });
-  root.child('prefs/' + me + '/theme').on('value', s => { const t = s.val(); if (t && t !== currentTheme) { applyTheme(t); if (view === 'members') render(); } });
+  root.child('prefs/' + me).on('value', s => { state.prefs = s.val() || {}; const t = state.prefs.theme; if (t && t !== currentTheme) applyTheme(t); if (view === 'members') render(); });
+  // keep the push token fresh on devices where reminders are already on
+  setTimeout(() => { const r = myReminders(); if ((r.daily || r.wrap) && 'Notification' in window && Notification.permission === 'granted') registerPush(false); }, 3000);
+  try { firebase.messaging().onMessage(p => { const n = (p && (p.notification || p.data)) || {}; if (n.title || n.body) toast(`${n.title ? n.title + ': ' : ''}${n.body || ''}`); }); } catch {}
   root.child('log').orderByChild('ts').limitToLast(150).on('value', s => { feed = []; s.forEach(c => { feed.push({ id: c.key, ...c.val() }); }); feed.reverse(); if (view === 'feed') render(); });
   root.child('log').orderByChild('ts').limitToLast(1).on('child_added', s => { const e = s.val(); if (e && e.taskId && e.by !== me && Date.now() - (e.ts || 0) < 15000) flash(e.taskId); });
   subscribeChecks();
@@ -630,9 +648,19 @@ function addTask(cat, name, effort, freq) { const id = root.child('tasks').push(
 function setNote(id, text) { const t = T(id); text = text.trim(); if ((t.notes || '') === text) return; commit({ [`tasks/${id}/notes`]: text || null }, text ? `updated the note on "${t.name}"` : `cleared the note on "${t.name}"`, id); }
 function openNote(id, editable = true) {
   const t = T(id); if (!t) return;
-  openModal(t.name, `<p class="hint">Notes — where things are, how you like it done, anything the next person should know.</p><textarea id="noteText" style="min-height:140px;font-family:inherit;font-size:14px" ${editable ? '' : 'readonly'} placeholder="e.g. Litter is under the sink; use the blue scoop">${esc(t.notes || '')}</textarea>`,
+  openModal(t.name, `<p class="hint">Notes — where things are, how you like it done, anything the next person should know.</p><textarea id="noteText" style="min-height:120px;font-family:inherit;font-size:14px" ${editable ? '' : 'readonly'} placeholder="e.g. Litter is under the sink; use the blue scoop">${esc(t.notes || '')}</textarea>
+    <div id="photoBox" class="photobox">${t.hasPhoto ? '<div class="hint">Loading photo…</div>' : ''}</div>
+    <div class="row wrap"><label class="btn sm"><input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none">📷 ${t.hasPhoto ? 'Replace photo' : 'Add a photo'}</label>${t.hasPhoto ? '<button class="btn sm danger" id="photoRm">Remove photo</button>' : ''}<span class="hint">a picture of "done right" beats a paragraph</span></div>`,
     editable ? [['Save', () => { setNote(id, $('noteText').value); closeModal(); }, 'primary']] : []);
+  if (t.hasPhoto) root.child('photos/' + id).once('value').then(sn => { const v = sn.val(); const box = $('photoBox'); if (box) box.innerHTML = v ? `<img src="${v}" alt="Task photo">` : ''; });
+  const pin = $('photoIn'); if (pin) pin.onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const data = await shrinkImage(f); await root.update({ [`photos/${id}`]: data, [`tasks/${id}/hasPhoto`]: true }); commit({}, `added a photo to "${t.name}"`, id); $('photoBox').innerHTML = `<img src="${data}" alt="Task photo">`; toast('Photo saved'); } catch (err) { toast('Could not save photo: ' + (err.message || err)); } };
+  const prm = $('photoRm'); if (prm) prm.onclick = () => { root.update({ [`photos/${id}`]: null, [`tasks/${id}/hasPhoto`]: null }); commit({}, `removed the photo from "${t.name}"`, id); $('photoBox').innerHTML = ''; prm.remove(); };
   setTimeout(() => $('noteText')?.focus(), 50);
+}
+function shrinkImage(file, max = 1000, q = 0.72) {
+  return new Promise((res, rej) => { const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => { const sc = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); const d = c.toDataURL('image/jpeg', q); if (d.length > 400000) rej(new Error('image too large')); else res(d); };
+    img.onerror = () => rej(new Error('could not read image')); img.src = url; });
 }
 function renamePerson(i, name) { name = name.trim() || DEFAULT_PEOPLE[i]; if (name === state.people[i]) return; commit({ [`people/${i}`]: name }, `renamed ${state.people[i]} → ${name}`); }
 function autoBalance() {
@@ -645,8 +673,23 @@ function toggleCheck(t, day) {
   const wk = weekKey(selectedWeekStart()); const cur = (state.checks[t.id] || {})[day];
   const path = `checks/${wk}/${t.id}/${day}`;
   if (cur && cur.by !== undefined && cur.by !== me) { toast(`Only ${state.people[cur.by]} can undo that check-off`); return; }
-  if (cur) commit({ [path]: null }, `un-checked "${t.name}" for ${DAYS[day]}`, t.id, 'check');
-  else commit({ [path]: { by: me, ts: firebase.database.ServerValue.TIMESTAMP } }, `checked off "${t.name}" — ${DAYS[day]}`, t.id, 'check');
+  if (cur) { commit({ [path]: null }, `un-checked "${t.name}" for ${DAYS[day]}`, t.id, 'check'); toast(`Un-checked ${t.name}`, { label: 'Undo', fn: () => commit({ [path]: { by: me, ts: firebase.database.ServerValue.TIMESTAMP } }, `re-checked "${t.name}" — ${DAYS[day]}`, t.id, 'check') }); }
+  else { commit({ [path]: { by: me, ts: firebase.database.ServerValue.TIMESTAMP } }, `checked off "${t.name}" — ${DAYS[day]}`, t.id, 'check'); toast(`✓ ${t.name}`, { label: 'Undo', fn: () => commit({ [path]: null }, `un-checked "${t.name}" for ${DAYS[day]} (undo)`, t.id, 'check') }); setTimeout(maybeCelebrate, 400); }
+}
+// Confetti when the current week hits 100%
+let celebratedWeek = null;
+function maybeCelebrate() {
+  if (ckWeekOffset !== 0) return; const wk = weekIndex(new Date()); const key = weekKey(new Date());
+  const mine = state.tasks.filter(t => t.on && (t.who === 'rot' ? rotAssignee(t, wk) : t.who) === me && t.freq >= 1);
+  if (!mine.length) return;
+  const done = mine.every(t => Object.keys((state.allChecks[key] || {})[t.id] || {}).length >= targetFor(t));
+  if (done && celebratedWeek !== key) { celebratedWeek = key; confetti(); toast('🎉 100% for the week — nice work!'); }
+}
+function confetti() {
+  const c = document.createElement('canvas'); c.className = 'confetti'; document.body.appendChild(c); const ctx = c.getContext('2d');
+  c.width = innerWidth; c.height = innerHeight; const cols = [getComputedStyle(document.documentElement).getPropertyValue('--p0'), getComputedStyle(document.documentElement).getPropertyValue('--p1'), getComputedStyle(document.documentElement).getPropertyValue('--p2'), '#f1c40f', '#e6399b'];
+  const ps = Array.from({ length: 140 }, () => ({ x: c.width / 2 + (Math.random() - .5) * 200, y: c.height * .55, vx: (Math.random() - .5) * 14, vy: -Math.random() * 16 - 6, r: Math.random() * 6 + 3, col: cols[Math.floor(Math.random() * cols.length)].trim(), rot: Math.random() * 6, vr: (Math.random() - .5) * .3 }));
+  let frames = 0; (function tick() { ctx.clearRect(0, 0, c.width, c.height); ps.forEach(p => { p.vy += .45; p.x += p.vx; p.y += p.vy; p.vx *= .99; p.rot += p.vr; ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.col; ctx.fillRect(-p.r / 2, -p.r / 2, p.r, p.r * .6); ctx.restore(); }); if (++frames < 130) requestAnimationFrame(tick); else c.remove(); })();
 }
 // ---- House votes: destructive actions need everyone's OK ----
 const VOTE_ACTIONS = {
@@ -684,6 +727,52 @@ function setMyColor(hex) {
   if (!/^#[0-9a-f]{6}$/.test(hex)) return toast('Use a hex color like #ff7eb6');
   if (hex === (state.colors[me] || '').toLowerCase()) return;
   commit({ [`colors/${me}`]: hex }, `changed their color to ${hex}`);
+}
+// ---- Reminders / push notifications ----
+const IS_IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function pushSupport() {
+  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return { ok: false, why: IS_IOS ? 'On iPhone, notifications only work from the home-screen app: open this page in Safari, Share → Add to Home Screen, then enable reminders from there.' : 'This browser doesn\'t support web notifications.' };
+  if (IS_IOS && !IS_STANDALONE) return { ok: false, why: 'On iPhone, notifications only work from the home-screen app: Share → Add to Home Screen, open it from the icon, then enable reminders here.' };
+  return { ok: true };
+}
+let swReg = null;
+async function ensureSW() { if (swReg) return swReg; swReg = await navigator.serviceWorker.register('./firebase-messaging-sw.js'); await navigator.serviceWorker.ready; return swReg; }
+function tokenKey(t) { let h = 0; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return 'k' + (h >>> 0).toString(36) + t.length; }
+async function registerPush(interactive) {
+  const sup = pushSupport(); if (!sup.ok) { if (interactive) toast(sup.why); return false; }
+  let perm = Notification.permission;
+  if (perm !== 'granted') { if (!interactive) return false; perm = await Notification.requestPermission(); }
+  if (perm !== 'granted') { toast('Notifications are blocked for this app in your device settings.'); return false; }
+  try {
+    const reg = await ensureSW();
+    const token = await firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!token) throw new Error('no token');
+    await root.child(`prefs/${me}/push/${tokenKey(token)}`).set({ token, ts: firebase.database.ServerValue.TIMESTAMP, ua: navigator.userAgent.slice(0, 80), standalone: !!IS_STANDALONE });
+    return true;
+  } catch (e) { if (interactive) toast('Could not enable: ' + (e.message || e)); return false; }
+}
+function myReminders() { return (state.prefs && state.prefs.reminders) || {}; }
+async function setReminders(patch) {
+  const cur = { daily: false, time: '18:00', wrap: true, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, ...myReminders(), ...patch, tz: Intl.DateTimeFormat().resolvedOptions().timeZone };
+  if ((cur.daily || cur.wrap) && !(await registerPush(true))) { cur.daily = false; cur.wrap = false; }
+  await root.child(`prefs/${me}/reminders`).set(cur); render();
+}
+async function testNotification() {
+  const sup = pushSupport(); if (!sup.ok) return toast(sup.why);
+  if (Notification.permission !== 'granted') { if (!(await registerPush(true))) return; }
+  const reg = await ensureSW(); reg.showNotification('Household Chores', { body: 'Reminders are working on this device 🎉', icon: 'icon-192.png', badge: 'icon-192.png', tag: 'test' });
+}
+function renderReminders() {
+  const r = { daily: false, time: '18:00', wrap: true, ...myReminders() }; const sup = pushSupport();
+  const tokens = Object.keys((state.prefs && state.prefs.push) || {}).length;
+  const perm = ('Notification' in window) ? Notification.permission : 'unsupported';
+  return `<h2>Reminders</h2><div class="card pad">
+    ${sup.ok ? '' : `<div class="hint" style="margin-bottom:10px">⚠️ ${sup.why}</div>`}
+    <label class="row" style="justify-content:space-between;gap:12px"><span><b>Daily nudge</b><div class="hint">A short push with what's still open for you today (only if something's left).</div></span><input type="checkbox" id="remDaily" ${r.daily ? 'checked' : ''} ${sup.ok ? '' : 'disabled'} style="width:22px;height:22px;accent-color:var(--accent)"></label>
+    <div class="row" style="margin:10px 0 0 0;gap:10px"><span class="hint">Nudge me at</span><input type="time" id="remTime" class="text" value="${esc(r.time)}" ${sup.ok ? '' : 'disabled'} style="padding:6px 8px"></div>
+    <label class="row" style="justify-content:space-between;gap:12px;margin-top:14px"><span><b>Weekly wrap-up</b><div class="hint">Monday morning: last week's scores and this week's rotation.</div></span><input type="checkbox" id="remWrap" ${r.wrap ? 'checked' : ''} ${sup.ok ? '' : 'disabled'} style="width:22px;height:22px;accent-color:var(--accent)"></label>
+    <div class="row wrap" style="margin-top:14px"><button class="btn sm" id="remTest" ${sup.ok ? '' : 'disabled'}>Send a test notification</button><span class="hint">${perm === 'granted' ? `enabled on ${tokens || 1} device${tokens === 1 ? '' : 's'}` : perm === 'denied' ? 'blocked in device settings' : 'not enabled on this device yet'}</span></div>
+  </div>`;
 }
 function addMember(slot, email) {
   email = email.trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('That doesn\'t look like an email');
@@ -761,7 +850,7 @@ function renderBoard() {
     const rows = tasks.map(t => `
       <div class="task ${t.on ? '' : 'off'}" data-id="${t.id}">
         <input type="checkbox" class="chk" data-id="${t.id}" ${t.on ? 'checked' : ''} aria-label="Include">
-        <div class="name"><div class="row" style="gap:6px"><input class="name-in" data-id="${t.id}" value="${esc(t.name)}"><button class="notebtn ${t.notes ? 'has' : ''}" data-id="${t.id}" title="${t.notes ? esc(t.notes) : 'Add a note'}">${NOTE_ICON}</button></div>${t.notes ? `<div class="notetxt">${esc(t.notes)}</div>` : ''}</div>
+        <div class="name"><div class="row" style="gap:6px"><input class="name-in" data-id="${t.id}" value="${esc(t.name)}"><button class="notebtn ${t.notes || t.hasPhoto ? 'has' : ''}" data-id="${t.id}" title="${t.notes ? esc(t.notes) : 'Add a note or photo'}">${t.hasPhoto ? '📷' : NOTE_ICON}</button></div>${t.notes ? `<div class="notetxt">${esc(t.notes)}</div>` : ''}</div>
         <div class="meta">
           <span class="effort" data-id="${t.id}" title="Effort 1–5">${[1, 2, 3, 4, 5].map(n => `<span class="${n <= t.effort ? 'on' : ''}" data-v="${n}">${n}</span>`).join('')}</span>
           <span class="freq"><input type="number" class="freq-in" data-id="${t.id}" value="${t.freq}" min="0" step="0.25"><span class="lbl">×/wk</span></span>
@@ -813,7 +902,8 @@ function renderWeek() {
   const cards = scores.map(s => `<div class="score ${ckPerson === s.i ? 'sel' : ''}" data-i="${s.i}"><div class="nm"><span class="dot p${s.i}"></span>${esc(s.p)}</div><div class="pct">${s.pct}%</div><div class="hint" style="white-space:nowrap">${fmt(s.done)} / ${fmt(s.planned)} pts${s.bonus ? ` +${fmt(s.bonus)}` : ''}</div><div class="track"><div class="fill p${s.i}" style="width:${Math.min(100, s.pct)}%"></div></div></div>`).join('');
   const mine = active.filter(t => assignee(t) === ckPerson);
   const groups = Object.keys(CATS).map(key => {
-    const ts = mine.filter(t => t.cat === key); if (!ts.length) return '';
+    let ts = mine.filter(t => t.cat === key); if (!ts.length) return '';
+    if (isCur) ts = ts.map((t, i) => ({ t, i })).sort((a, b) => { const rank = x => { const ch = state.checks[x.id] || {}; const n = Object.keys(ch).length; if (n >= targetFor(x)) return 2; if (targetFor(x) >= 5 && ch[tIdx]) return 1; return 0; }; return rank(a.t) - rank(b.t) || a.i - b.i; }).map(x => x.t);
     return `<h2>${CATS[key]}</h2><div class="card">${ts.map(t => {
       const ch = state.checks[t.id] || {}; const n = Object.keys(ch).length; const tgt = targetFor(t); const complete = n >= tgt;
       const cells = DAYS.map((d, di) => { const c = ch[di]; const on = !!c; const byOther = on && c.by !== undefined && c.by !== ckPerson; const future = isCur && di > tIdx || ckWeekOffset > 0;
@@ -821,19 +911,41 @@ function renderWeek() {
         return `<button class="day ${on ? 'on p' + (c.by ?? ckPerson) : ''} ${isCur && di === tIdx ? 'today' : ''} ${future && !on ? 'future' : ''} ${locked ? 'locked' : ''}" data-id="${t.id}" data-day="${di}" title="${d}${on ? ' — done by ' + esc(state.people[c.by] ?? '') + (locked ? ' (only they can undo it)' : '') : ''}"><span class="d">${d.slice(0, 2)}</span>${byOther ? '<span class="byo"></span>' : ''}</button>`; }).join('');
       const rot = t.who === 'rot' ? `<span class="cat">↻ rotation</span>` : '';
       const st = taskStreak(t); const streak = st.n >= 2 ? `<span class="streak" title="${st.n} ${st.unit}s in a row">🔥 ${st.n}${st.unit === 'day' ? 'd' : 'w'}</span>` : '';
-      const note = t.notes ? `<button class="notebtn has inline" data-id="${t.id}" title="${esc(t.notes)}">${NOTE_ICON}</button>` : '';
+      const note = (t.notes || t.hasPhoto) ? `<button class="notebtn has inline" data-id="${t.id}" title="${esc(t.notes || 'photo')}">${t.hasPhoto ? '📷' : NOTE_ICON}</button>` : '';
       return `<div class="ck" data-id="${t.id}"><div class="name">${esc(t.name)}${note}${rot}<span class="cat">${t.freq < 1 ? 'as needed' : ''}</span>${streak}</div><div class="prog ${complete ? 'done' : ''}">${complete ? '✓ ' : ''}${n}/${tgt}${t.freq < 1 ? '' : ''} · ${t.effort}pt${t.effort > 1 ? 's' : ''} each</div><div class="days">${cells}</div></div>`;
     }).join('')}</div>`;
   }).join('');
   const rots = active.filter(t => t.who === 'rot');
   const rotNote = rots.length ? `<p class="rotnote">Rotation this week: ${rots.map(t => `${esc(t.name)} → <b>${esc(state.people[rotAssignee(t, wk)])}</b>`).join(' · ')}</p>` : '';
-  return `${renderVoteBanner()}${renderCats()}<div class="card pad">
+  return `${renderVoteBanner()}${renderWrapCard()}${renderCats()}<div class="card pad">
       <div class="weeknav"><button id="wkPrev" aria-label="Previous week">‹</button><div class="lbl">${label}<div class="hint" style="font-weight:400">${sub}</div></div><button id="wkNext" aria-label="Next week" ${ckWeekOffset >= 0 ? 'disabled style="opacity:.4"' : ''}>›</button></div>
       <div class="scorecards" style="margin-top:12px">${cards}</div>
       ${rotNote}
     </div>
     <div class="row" style="margin:16px 0 4px"><h1 style="margin:0;font-size:18px">${ckPerson === me ? 'Your' : esc(state.people[ckPerson]) + "'s"} checklist</h1><span class="grow"></span><span class="hint">tap a day to check it off</span></div>
     ${groups || '<div class="card empty">No tasks assigned to ' + esc(state.people[ckPerson]) + ' yet — assign some on the Board.</div>'}`;
+}
+
+// ---------- Weekly wrap-up (shown Mon–Wed for the week that just ended) ----------
+function weekSummary(ws) {
+  const wk = weekIndex(ws); const key = weekKey(ws); const checks = state.allChecks[key] || {};
+  const active = state.tasks.filter(t => t.on && t.freq >= 1);
+  return state.people.map((p, i) => { const mine = active.filter(t => (t.who === 'rot' ? rotAssignee(t, wk) : t.who) === i);
+    const planned = mine.reduce((a, t) => a + t.effort * targetFor(t), 0); const done = mine.reduce((a, t) => a + t.effort * Math.min(Object.keys(checks[t.id] || {}).length, targetFor(t)), 0);
+    const perfect = mine.length > 0 && mine.every(t => Object.keys(checks[t.id] || {}).length >= targetFor(t));
+    return { i, p, planned, done, pct: planned ? Math.round(done / planned * 100) : 0, perfect }; });
+}
+function renderWrapCard() {
+  if (ckWeekOffset !== 0) return ''; const dow = todayIdx(); if (dow > 2) return '';
+  const last = startOfWeek(new Date()); last.setDate(last.getDate() - 7); const key = weekKey(last);
+  if (!state.allChecks[key]) return '';
+  try { if (localStorage.getItem('wrap-dismissed') === key) return ''; } catch {}
+  const sum = weekSummary(last); const best = [...sum].sort((a, b) => b.pct - a.pct)[0];
+  const rots = state.tasks.filter(t => t.on && t.who === 'rot'); const wkNow = weekIndex(new Date());
+  const rows = sum.map(s => `<div class="row" style="gap:8px"><span class="dot p${s.i}"></span><span style="width:70px;font-weight:600">${esc(s.p)}</span><div class="track grow" style="margin:0"><div class="fill p${s.i}" style="width:${Math.min(100, s.pct)}%"></div></div><b style="width:44px;text-align:right">${s.pct}%</b>${s.perfect ? '<span title="perfect week">🏅</span>' : ''}</div>`).join('');
+  return `<div class="card pad wrap"><div class="row"><span style="font-size:18px">📬</span><b>Last week's wrap-up</b><span class="grow"></span><button class="btn sm ghost" id="wrapClose" aria-label="Dismiss">✕</button></div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">${rows}</div>
+    <div class="hint" style="margin-top:8px">${best && best.pct > 0 ? `${esc(best.p)} led with ${best.pct}%. ` : ''}${rots.length ? 'This week\'s rotation: ' + rots.map(t => `${esc(t.name)} → <b>${esc(state.people[rotAssignee(t, wkNow)])}</b>`).join(' · ') : ''}</div></div>`;
 }
 
 // ---------- Cats ----------
@@ -865,7 +977,16 @@ function renderStats() {
   const ranked = [...per].sort((a, b) => b.pts - a.pts); const max = Math.max(1, ...per.map(s => s.pts));
   const medals = ['🥇', '🥈', '🥉'];
   const board = ranked.map((s, r) => { const fav = Object.entries(s.byTask).sort((a, b) => b[1] - a[1])[0]; const ft = fav ? T(fav[0]) : null;
-    return `<div class="lb"><div class="rank">${s.pts ? medals[r] : '—'}</div><div class="grow"><div class="row"><span class="dot p${s.i}"></span><b>${esc(s.p)}</b><span class="grow"></span><b class="pts">${fmt(s.pts)} pts</b></div><div class="track"><div class="fill p${s.i}" style="width:${s.pts / max * 100}%"></div></div><div class="hint" style="margin-top:4px">${s.n} check-off${s.n === 1 ? '' : 's'} on ${s.days.size} day${s.days.size === 1 ? '' : 's'}${ft ? ` · most often: ${esc(ft.name)} (${fav[1]}×)` : ''}</div></div></div>`; }).join('');
+    return `<div class="lb"><div class="rank">${s.pts ? medals[r] : '—'}</div><div class="grow"><div class="row"><span class="dot p${s.i}"></span><b>${esc(s.p)}</b><span class="grow"></span><b class="pts">${fmt(s.pts)} pts</b></div><div class="track"><div class="fill p${s.i}" style="width:${s.pts / max * 100}%"></div></div><div class="hint" style="margin-top:4px">${s.n} check-off${s.n === 1 ? '' : 's'} on ${s.days.size} day${s.days.size === 1 ? '' : 's'}${ft ? ` · most often: ${esc(ft.name)} (${fav[1]}×)` : ''}</div>${badges[s.i].length ? `<div class="badges">${badges[s.i].map(b => `<span class="badge">${b}</span>`).join('')}</div>` : ''}</div></div>`; }).join('');
+  // badges
+  const perfectWeeks = state.people.map(() => 0); const catCount = state.people.map(() => 0); const bestStreak = state.people.map((_, i) => personDayStreak(i).best);
+  { const ws = startOfWeek(m0); const end = new Date(m1); while (ws < end) { if (state.allChecks[weekKey(ws)]) weekSummary(ws).forEach(x => { if (x.perfect) perfectWeeks[x.i]++; }); ws.setDate(ws.getDate() + 7); } }
+  per.forEach(s => { for (const [tid, n] of Object.entries(s.byTask)) { const t = T(tid); if (t && catRe.test(t.name)) catCount[s.i] += n; } });
+  const badges = state.people.map(() => []);
+  const top = ranked[0]; if (top && top.pts > 0) badges[top.i].push('🥇 Top scorer');
+  const ms = Math.max(...bestStreak); if (ms >= 3) bestStreak.forEach((v, i) => { if (v === ms) badges[i].push(`🔥 Streak master (${v}d)`); });
+  const mc = Math.max(...catCount); if (mc >= 5) catCount.forEach((v, i) => { if (v === mc) badges[i].push('🐈 Cat whisperer'); });
+  perfectWeeks.forEach((v, i) => { if (v > 0) badges[i].push(`🏅 Perfect week${v > 1 ? 's ×' + v : ''}`); });
   const streaks = state.people.map((p, i) => { const st = personDayStreak(i); return `<div class="person"><div class="nm"><span class="dot p${i}"></span>${esc(p)}</div><div class="big">${st.current > 0 ? '🔥' : ''}${st.current}<small>day${st.current === 1 ? '' : 's'}</small></div><div class="sub">current streak · best ${st.best}</div></div>`; }).join('');
   const hot = state.tasks.filter(t => t.on).map(t => ({ t, s: taskStreak(t) })).filter(x => x.s.n >= 2).sort((a, b) => b.s.n - a.s.n).slice(0, 8);
   const hotHtml = hot.length ? hot.map(x => `<div class="hotrow"><span class="grow">${esc(x.t.name)}</span><span class="hint">${x.t.who === 'rot' ? 'rotation' : x.t.who >= 0 ? esc(state.people[x.t.who]) : ''}</span><b>🔥 ${x.s.n} ${x.s.unit}${x.s.n === 1 ? '' : 's'}</b></div>`).join('') : '<div class="empty">Streaks show up once a task has been done two days (or weeks) in a row.</div>';
@@ -901,6 +1022,7 @@ function renderMembers() {
   return `${renderVoteBanner()}<h1 style="font-size:18px">The house</h1>
     <div class="card">${rows}</div>
     <p class="hint" style="margin:8px 2px 0">Only emails listed here can open the board. Add each person's Google account next to their name; they sign in with it and everything they do is tagged with their name.</p>
+    ${renderReminders()}
     <h2>Appearance</h2>
     <div class="card pad">
       <div class="hint" style="margin-bottom:8px">Theme — just for you, on every device you sign in on</div>
@@ -954,6 +1076,11 @@ function wire() {
   v.querySelectorAll('.pn').forEach(el => { el.onchange = e => renamePerson(+e.target.dataset.i, e.target.value); el.onkeydown = e => { if (e.key === 'Enter') e.target.blur(); }; });
   v.querySelectorAll('form.add-member').forEach(f => f.onsubmit = e => { e.preventDefault(); addMember(+f.dataset.i, f.querySelector('input').value); f.reset(); });
   v.querySelectorAll('.rm-member').forEach(b => b.onclick = () => removeMember(b.dataset.k));
+  const wc = $('wrapClose'); if (wc) wc.onclick = () => { try { const last = startOfWeek(new Date()); last.setDate(last.getDate() - 7); localStorage.setItem('wrap-dismissed', weekKey(last)); } catch {} render(); };
+  const rd = $('remDaily'); if (rd) rd.onchange = e => setReminders({ daily: e.target.checked });
+  const rt = $('remTime'); if (rt) rt.onchange = e => setReminders({ time: e.target.value || '18:00' });
+  const rw = $('remWrap'); if (rw) rw.onchange = e => setReminders({ wrap: e.target.checked });
+  const rtst = $('remTest'); if (rtst) rtst.onclick = testNotification;
   // appearance
   v.querySelectorAll('.theme').forEach(b => b.onclick = () => setTheme(b.dataset.theme));
   const mc = $('myColor'); if (mc) { mc.oninput = e => { $('myColorHex').value = e.target.value; document.documentElement.style.setProperty(`--p${me}`, e.target.value); document.documentElement.style.setProperty(`--p${me}-ink`, inkFor(e.target.value)); }; mc.onchange = e => setMyColor(e.target.value); }
