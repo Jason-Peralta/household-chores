@@ -120,10 +120,11 @@
   .jl .t .m .dot { margin: 0 4px 0 0; vertical-align: 0; }
   .jl.done .t { color: var(--ink-4); }
   .jl.done .t .m { color: var(--ink-4); }
-  .jl.od .gut b, .jl.od .t .m { color: var(--late); }
-  .jl.od .gut { border-right-color: var(--late); }
+  .jl.od .gut b, .jl.od .t .m { color: var(--od, var(--late)); }
+  .jl.od .gut { border-right-color: var(--od, var(--late)); }
+  .odline { color: var(--od, var(--late)); }
   .jl.tap { cursor: pointer; }
-  .jl.flash { animation: flash 1.4s ease-out; }
+  .jl.flash, .wk.flash { animation: flash 1.4s ease-out; }
   @keyframes flash { from { background: color-mix(in srgb, var(--warn) 18%, transparent); } to { background: transparent; } }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 6px; vertical-align: middle; flex-shrink: 0; }
   .who { font-size: 12.5px; color: var(--ink-2); font-weight: 500; white-space: nowrap; display: inline-flex; align-items: center; }
@@ -252,10 +253,11 @@
   .sheet p { margin: 0; }
   .sheet textarea { width: 100%; min-height: 110px; padding: 10px; border-radius: 10px; border: 1px solid var(--rule-2); background: var(--card); resize: vertical; font-family: var(--sans); font-size: 14px; }
   .sheet-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 4px; }
-  .toast { position: fixed; bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 9px 14px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 30; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
+  .toast { position: fixed; bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 9px 14px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 30; max-width: 92vw; display: flex; align-items: center; gap: 12px; }
+  .toast span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   @media (min-width: 900px) { .toast { bottom: 26px; } }
   .toast.show { opacity: 1; pointer-events: auto; }
-  .toastbtn { margin-left: 12px; background: transparent; border: 1px solid color-mix(in srgb, var(--paper) 40%, transparent); color: var(--paper); padding: 4px 10px; border-radius: 7px; font-weight: 600; font-size: 13px; }
+  .toastbtn { flex-shrink: 0; background: transparent; border: 1px solid color-mix(in srgb, var(--paper) 40%, transparent); color: var(--paper); padding: 4px 10px; border-radius: 7px; font-weight: 600; font-size: 13px; }
   .updatebar { position: fixed; left: 12px; right: 12px; bottom: calc(var(--nav-h) + 12px + env(safe-area-inset-bottom)); z-index: 25; background: var(--ink); color: var(--paper); padding: 10px 14px; border-radius: 12px; display: flex; align-items: center; gap: 12px; font-size: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
   .updatebar span { flex: 1; }
   @media (min-width: 900px) { .updatebar { bottom: 20px; left: auto; right: 20px; width: 380px; } }
@@ -443,7 +445,7 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {}, members: {}, allChecks: {}, votes: {}, colors: [...DEFAULT_COLORS], prefs: {}, alerts: {}, alertDone: {}, list: {}, started: null, houseIds: [], houseName: '' };
 Object.defineProperty(state, 'checks', { get() { return state.allChecks[weekKey(selectedWeekStart())] || {}; } });
 let me = null, user = null, db = null, root = null;
-let feed = [], view = 'today', todayMode = 'today', insightsTab = 'board', menuOpen = false, boardFilter = 'all', ckPerson = null, ckWeekOffset = 0, feedShowChecks = true;
+let feed = [], view = 'today', todayMode = 'today', insightsTab = 'board', boardFilter = 'all', ckPerson = null, ckWeekOffset = 0, feedShowChecks = true;
 let checksRef = null, checksFrom = null, statsMonthOffset = 0, pendingFocus = null;
 const catRe = /\bcats?\b|litter|kitt/i;
 const $ = id => document.getElementById(id);
@@ -455,7 +457,7 @@ const pname = i => i === 'rot' ? 'Rotate' : (i >= 0 ? state.people[i] : 'unassig
 const emailKey = e => String(e).trim().toLowerCase().replace(/\./g, ',');
 const initials = n => String(n || '?').trim().slice(0, 1).toUpperCase();
 function toast(msg, action) {
-  const el = $('toast'); el.innerHTML = ''; el.append(document.createTextNode(msg));
+  const el = $('toast'); el.innerHTML = ''; const sp = document.createElement('span'); sp.textContent = msg; el.appendChild(sp);
   if (action) { const b = document.createElement('button'); b.className = 'toastbtn'; b.textContent = action.label; b.onclick = () => { el.classList.remove('show'); action.fn(); }; el.appendChild(b); }
   el.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), action ? 8000 : 1900);
 }
@@ -873,7 +875,6 @@ const hmAmpm = ts => ts ? new Date(ts).toLocaleTimeString([], { hour: 'numeric',
 function ago(ts) { if (!ts) return ''; const s = (Date.now() - ts) / 1000; if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s / 60)} min ago`; if (s < 86400) return `${Math.floor(s / 3600)} h ago`; return new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
 function agoShort(ts) { if (!ts) return ''; const s = (Date.now() - ts) / 1000; if (s < 60) return 'now'; if (s < 3600) return `${Math.floor(s / 60)}m`; if (s < 86400) return `${Math.floor(s / 3600)}h`; if (s < 6 * 86400) return DAYS[(new Date(ts).getDay() + 6) % 7]; return `${MONTHS[new Date(ts).getMonth()]} ${new Date(ts).getDate()}`; }
 const dotOf = i => i >= 0 && i !== 'rot' ? `<span class="dot p${i}"></span>` : '';
-const nameDot = i => i === 'rot' ? '↻ rotates' : i >= 0 ? `${esc(state.people[i])}${dotOf(i)}` : '';
 const gut = (b, s, cls = '') => `<div class="gut ${cls}"><b>${b}</b>${s ? `<span>${s}</span>` : ''}</div>`;
 const chk = (on, attrs, lockedBy, extraCls = '') => { const locked = lockedBy !== null && lockedBy !== undefined; return `<button class="chk ${on ? 'on' : ''} ${locked ? 'locked' : ''} ${extraCls}" ${attrs} aria-label="${on ? 'Done' : 'Mark done'}" ${locked ? 'title="Only ' + esc(state.people[lockedBy] ?? '') + ' can undo this"' : ''}></button>`; };
 const noteBtn = t => (t.notes || t.hasPhoto) ? `<button class="notebtn" data-note="${t.id}" title="${esc(t.notes || 'photo')}">${t.hasPhoto ? '📷' : NOTE_ICON}</button>` : '';
@@ -882,7 +883,7 @@ const assigneeThisWeek = (t, wk) => t.who === 'rot' ? rotAssignee(t, wk) : t.who
 function renderNav() {
   const html = TABS.map(([k, l, ic]) => `<button class="n ${view === k ? 'on' : ''}" data-v="${k}">${ic}<span>${l}</span></button>`).join('');
   $('navSide').innerHTML = html; $('tabsBottom').innerHTML = html;
-  $('sideHouse').textContent = state.houseName || (houseId === 'main' ? 'Our house' : 'Our house');
+  $('sideHouse').textContent = state.houseName || 'Our house';
   document.querySelectorAll('#navSide button, #tabsBottom button').forEach(b => b.onclick = () => { if (view !== b.dataset.v) { view = b.dataset.v; render(); window.scrollTo(0, 0); } });
 }
 function render() {
@@ -949,7 +950,7 @@ function renderToday() {
   let title, meta;
   if (todayMode === 'today') { title = now.toLocaleDateString([], { weekday: 'long' }); meta = `${dshort(now)} · ${esc(String(who).toUpperCase())}`; }
   else { title = isCur ? 'This week' : ckWeekOffset === -1 ? 'Last week' : `Week of ${ws.toLocaleDateString([], { month: 'short', day: 'numeric' })}`; meta = `${ws.getMonth() === we.getMonth() ? ws.getDate() + '–' + dshort(we) : dshort(ws) + ' – ' + dshort(we)} · ${esc(String(who).toUpperCase())}`; }
-  const body = todayMode === 'today' ? renderTodayList(scores) : renderWeekGrid(scores, ws, we);
+  const body = todayMode === 'today' ? renderTodayList(scores) : renderWeekGrid(scores, ws);
   return pageHeader(title, meta, seg) + personChips(scores) + renderVoteBanner() + (todayMode === 'today' ? renderWrapCard() : '') + body;
 }
 function renderTodayList(scores) {
@@ -975,7 +976,7 @@ function renderTodayList(scores) {
   if (cats.length) {
     const rows = cats.map(t => { shown.add(t.id); const c = todayCheck(t); const yc = ((state.allChecks[ywk] || {})[t.id] || {})[yi]; const o = c ? null : overdueInfo(t);
       const m = c ? `done at ${hmAmpm(c.ts)} · ${esc(state.people[c.by] ?? '')}` : (yc ? `yesterday ${hmAmpm(yc.ts)} · ${esc(state.people[yc.by] ?? '')}` : 'not yet today');
-      return `<div class="jl ${c ? 'done' : ''} ${o ? 'od' : ''}" data-id="${t.id}">${c ? gut(hm(c.ts), esc(state.people[c.by] ?? '')) : o ? gut(`${o.days}d`, o.last ? 'late' : 'never') : gut('—', `${t.effort} pt${t.effort > 1 ? 's' : ''}`)}<div class="t">${esc(t.name)}${noteBtn(t)}<span class="m">${o ? esc(o.text) : m}</span></div><div class="rt">${chk(!!c, `data-id="${t.id}" data-day="${ti}"`, c && c.by !== me ? c.by : null)}</div></div>`; }).join('');
+      return `<div class="jl ${c ? 'done' : ''} ${o ? 'od' : ''}" data-id="${t.id}" style="${overdueStyle(o)}">${c ? gut(hm(c.ts), esc(state.people[c.by] ?? '')) : o ? gut(`${o.days}d`, o.last ? 'late' : 'never') : gut('—', `${t.effort} pt${t.effort > 1 ? 's' : ''}`)}<div class="t">${esc(t.name)}${noteBtn(t)}<span class="m">${o ? esc(o.text) : m}</span></div><div class="rt">${chk(!!c, `data-id="${t.id}" data-day="${ti}"`, c && c.by !== me ? c.by : null)}</div></div>`; }).join('');
     const done = cats.filter(t => todayCheck(t)).length;
     out += `<h3 class="g">Cats <span>${done} of ${cats.length} today</span></h3><div class="today-list">${rows}</div>`;
   }
@@ -985,13 +986,14 @@ function renderTodayList(scores) {
     const ch = checks[t.id] || {}; const n = Object.keys(ch).length; const tgt = targetFor(t); const c = ch[ti]; const complete = n >= tgt;
     const st = taskStreak(t); const streak = st.n >= 2 ? `🔥 ${st.n}${st.unit === 'day' ? '-day' : '-week'} streak` : '';
     const o = complete ? null : overdueInfo(t);
-    let g, m, on = false, locked = null, cls = '';
+    let g, m, on = false, locked = null, cls = '', extra = '';
     if (kind === 'today') { on = !!c; locked = c && c.by !== me ? c.by : null; if (c) { g = gut(hm(c.ts), esc(c.by === me ? 'you' : state.people[c.by] ?? '')); m = t.who === 'rot' ? '↻ your turn this week' : (streak || ''); cls = 'done'; } else if (o) { g = gut(`${o.days}d`, o.last ? 'late' : 'never'); m = esc(o.text); cls = 'od'; } else { g = gut('—', `${t.effort} pt${t.effort > 1 ? 's' : ''}`); m = streak || (t.who === 'rot' ? '↻ your turn this week' : ''); } }
-    else { on = complete; const last = Object.entries(ch).sort((a, b) => (b[1].ts || 0) - (a[1].ts || 0))[0]; locked = complete && last && last[1].by !== me ? last[1].by : null;
-      if (complete) { g = gut(hm(last[1].ts) || '✓', last ? DAYS[+last[0]] : ''); m = `done${tgt > 1 ? ` ${n}/${tgt}` : ''} · ${esc(last[1].by === me ? 'you' : state.people[last[1].by] ?? '')}${n > tgt ? ` · +${n - tgt} extra` : ''}`; cls = 'done'; }
+    else { const last = Object.entries(ch).sort((a, b) => (b[1].ts || 0) - (a[1].ts || 0))[0]; const mineAny = Object.values(ch).some(x => x && x.by === me);
+      if (c) { on = true; locked = c.by !== me ? c.by : null; g = gut(hm(c.ts), esc(c.by === me ? 'you' : state.people[c.by] ?? '')); m = complete ? `done${tgt > 1 ? ` · ${n}/${tgt} this week` : ''}` : `${n}/${tgt} this week`; if (complete) cls = 'done'; }
+      else if (complete) { on = true; locked = mineAny ? null : (last ? last[1].by : null); g = gut(hm(last[1].ts) || '✓', DAYS[+last[0]]); m = `done${tgt > 1 ? ` ${n}/${tgt}` : ''} · ${esc(last[1].by === me ? 'you' : state.people[last[1].by] ?? '')}${n > tgt ? ` · +${n - tgt} extra` : ''}`; cls = 'done'; }
       else if (o) { g = gut(`${o.days}d`, o.last ? 'late' : 'never'); m = esc(o.text) + (n ? ` · ${n}/${tgt}` : ''); cls = 'od'; }
-      else { g = gut(n ? `${n}/${tgt}` : '—', `${t.effort} pt${t.effort > 1 ? 's' : ''}`); m = kind === 'need' ? humanInterval(intervalDays(t)) : (tgt > 1 ? `${tgt}× this week` : 'any day this week') + (streak ? ' · ' + streak : '') + (t.who === 'rot' ? ' · ↻ your turn' : ''); } }
-    return `<div class="jl ${cls}" data-id="${t.id}">${g}<div class="t">${esc(t.name)}${noteBtn(t)}<span class="m">${m}</span></div><div class="rt">${chk(on, `data-id="${t.id}" data-day="${ti}" ${kind !== 'today' ? 'data-weekly="1"' : ''}`, locked)}</div></div>`;
+      else { g = gut(n ? `${n}/${tgt}` : '—', `${t.effort} pt${t.effort > 1 ? 's' : ''}`); m = kind === 'need' ? humanInterval(intervalDays(t)) : (tgt > 1 ? `${tgt}× this week` : 'any day this week') + (streak ? ' · ' + streak : '') + (t.who === 'rot' ? ' · ↻ your turn' : ''); if (n) extra = 'dash'; } }
+    return `<div class="jl ${cls}" data-id="${t.id}" style="${cls === 'od' ? overdueStyle(o) : ''}">${g}<div class="t">${esc(t.name)}${noteBtn(t)}<span class="m">${m}</span></div><div class="rt">${chk(on, `data-id="${t.id}" data-day="${ti}" ${kind !== 'today' ? 'data-weekly="1"' : ''}`, locked, extra)}</div></div>`;
   };
   const daily = mine.filter(t => targetFor(t) >= 5 && !shown.has(t.id));
   const weekly = mine.filter(t => t.freq >= 1 && targetFor(t) < 5 && !shown.has(t.id));
@@ -1014,11 +1016,10 @@ function renderTodayList(scores) {
     <form id="shopForm" class="jl"><div class="gut"><b>+</b></div><input class="lineinput" name="text" placeholder="Add something we need…" autocomplete="off" style="font-weight:500"><button class="btn sm" type="submit">Add</button></form></div>`;
   return out;
 }
-function renderWeekGrid(scores, ws, we) {
+function renderWeekGrid(scores, ws) {
   const wk = weekIndex(ws); const isCur = ckWeekOffset === 0; const tIdx = todayIdx();
   const active = state.tasks.filter(t => t.on);
   const mine = active.filter(t => assigneeThisWeek(t, wk) === ckPerson);
-  const nav = '';
   const groups = Object.keys(CATS).map(key => {
     let ts = mine.filter(t => t.cat === key); if (!ts.length) return '';
     if (isCur) ts = ts.map((t, i) => ({ t, i })).sort((a, b) => { const rank = x => { const ch = state.checks[x.id] || {}; const n = Object.keys(ch).length; if (n >= targetFor(x)) return 2; if (targetFor(x) >= 5 && ch[tIdx]) return 1; return 0; }; return rank(a.t) - rank(b.t) || a.i - b.i; }).map(x => x.t);
@@ -1034,7 +1035,7 @@ function renderWeekGrid(scores, ws, we) {
   const s = scores[ckPerson] || { done: 0, planned: 0, pct: 0 };
   const rots = active.filter(t => t.who === 'rot');
   const rotLine = rots.length ? `<div class="bal"><span class="k">ROT</span><span>${rots.map(t => `${esc(t.name)} → <b>${esc(state.people[rotAssignee(t, wk)])}</b>`).join(' · ')}</span><b></b></div>` : '';
-  return nav + (groups || `<div class="empty">No tasks assigned to ${esc(state.people[ckPerson])} this week — assign some in Plan.</div>`) + `<div class="bal"><span class="k">BAL</span><span>${fmt(s.done)} of ${fmt(s.planned)} pts${s.bonus ? ` · +${fmt(s.bonus)} extra` : ''}</span><b>${s.pct}%</b></div>` + rotLine;
+  return (groups || `<div class="empty">No tasks assigned to ${esc(state.people[ckPerson])} this week — assign some in Plan.</div>`) + `<div class="bal"><span class="k">BAL</span><span>${fmt(s.done)} of ${fmt(s.planned)} pts${s.bonus ? ` · +${fmt(s.bonus)} extra` : ''}</span><b>${s.pct}%</b></div>` + rotLine;
 }
 
 // ---------- Plan ----------
@@ -1048,7 +1049,7 @@ function renderPlan() {
     const hi = tot.indexOf(Math.max(...tot)), lo = tot.indexOf(Math.min(...tot));
     verdict = `<span class="dot" style="background:${col};margin:0"></span><b>${txt}</b> · fair share ${fmt(ideal)} pts${spread >= 1 ? ` · ${esc(state.people[hi])} carries ${fmt(spread)} more than ${esc(state.people[lo])}` : ''}${unassigned ? ` · <b>${fmt(unassigned)}</b> unassigned` : ''}`; }
   const overdueCount = state.tasks.filter(t => overdueInfo(t)).length;
-  const filters = [['all', 'All'], ['mine', 'Mine'], ['un', 'Unassigned'], ['rot', 'Rotating'], ['od', `Overdue${overdueCount ? ' ' + overdueCount : ''}`], ['off', 'Excluded']].map(([k, l]) => `<button class="${boardFilter === k ? 'on' : ''}" data-f="${k}">${l}</button>`).join('');
+  const filters = [['all', 'All'], ['mine', 'Mine'], ['un', 'Unassigned'], ['rot', 'Rotating'], ['od', `Overdue${overdueCount ? ' ' + overdueCount : ''}`], ['off', `Excluded${state.tasks.filter(t => !t.on).length ? ' ' + state.tasks.filter(t => !t.on).length : ''}`]].map(([k, l]) => `<button class="${boardFilter === k ? 'on' : ''}" data-f="${k}">${l}</button>`).join('');
   const sections = Object.keys(CATS).map(key => {
     let tasks = state.tasks.filter(t => t.cat === key && (boardFilter === 'off' ? !t.on : t.on));
     if (boardFilter === 'mine') tasks = tasks.filter(t => t.who === me || t.who === 'rot');
@@ -1096,6 +1097,7 @@ function openTaskSheet(id) {
     <div class="field"><label>Notes</label><textarea id="noteText" placeholder="Where things are, how you like it done…" style="min-height:70px">${esc(t.notes || '')}</textarea></div>${photoHTML(t)}
     <div class="row" style="margin-top:14px;justify-content:space-between"><span class="hint mono">${fmt(load(t))} pts/wk</span><button type="button" class="btn sm danger" id="tsRemove">Remove task…</button></div>`,
     [['Save', () => {
+      if (!T(id)) { closeModal(); return toast('That task was removed by someone else'); }
       const name = $('tsName').value.trim(); const eff = stepperVal('tsEffort'); const freq = Math.max(0, parseFloat($('tsFreq').value) || 0); const who = $('tsWho').value; const cat = $('tsCat').value; const on = $('tsOn').checked; const note = $('noteText').value;
       closeModal();
       if (name && name !== t.name) renameTask(id, name);
