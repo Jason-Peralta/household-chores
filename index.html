@@ -124,7 +124,7 @@
   .jl.od .gut { border-right-color: var(--od, var(--late)); }
   .odline { color: var(--od, var(--late)); }
   .jl.tap { cursor: pointer; }
-  .jl.flash, .wk.flash { animation: flash 1.4s ease-out; }
+  .jl.flash, .wk.flash, .tr.flash { animation: flash 1.4s ease-out; }
   @keyframes flash { from { background: color-mix(in srgb, var(--warn) 18%, transparent); } to { background: transparent; } }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 6px; vertical-align: middle; flex-shrink: 0; }
   .who { font-size: 12.5px; color: var(--ink-2); font-weight: 500; white-space: nowrap; display: inline-flex; align-items: center; }
@@ -299,6 +299,28 @@
   .toolrow { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
   .today-list .jl.done .gut b { color: var(--ink-2); }
   @media (max-width: 380px) { :root { --gut: 50px; } .jl .t { font-size: 14px; } }
+
+  /* ============ Today: score cards + colour rows ============ */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; margin: 10px 0 2px; }
+  .sc { background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 8px 10px; text-align: left; font-family: var(--sans); color: var(--ink); min-width: 0; }
+  .sc.on { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+  .sc .nm { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .sc .nm .dot { margin: 0; }
+  .sc .pct { font-family: var(--serif); font-size: 22px; font-weight: 600; line-height: 1.1; margin-top: 2px; }
+  .sc .pts { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tr { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--rule); position: relative; }
+  .tr .t { flex: 1; min-width: 0; font-size: 15px; font-weight: 500; line-height: 1.3; }
+  .tr .m { display: block; font-size: 12.5px; font-weight: 500; margin-top: 1px; color: var(--ink-3); }
+  .tr .m.g { color: var(--done); } .tr .m.w { color: var(--warn); } .tr .m.r { color: var(--od, var(--late)); } .tr .m.dim { font-weight: 400; }
+  .tr .m .dim { color: var(--ink-3); font-weight: 400; }
+  .tr .rt { font-family: var(--mono); font-size: 11px; color: var(--ink-3); white-space: nowrap; text-align: right; line-height: 1.25; }
+  .tr .rt b { display: block; color: var(--ink); font-weight: 500; }
+  .tr.done .t { color: var(--ink-3); }
+  .ck { width: 36px; height: 36px; border-radius: 10px; border: 1.5px solid var(--rule-2); background: var(--card); flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 18px; padding: 0; line-height: 1; }
+  .ck.on { border-color: transparent; }
+  .ck.dash { border-style: dashed; }
+  .ck.locked { cursor: not-allowed; }
+  .ck.round { border-radius: 50%; width: 28px; height: 28px; margin: 0 4px; }
 </style>
 </head>
 <body>
@@ -380,7 +402,7 @@ function applyColors(colors) {
 applyColors(DEFAULT_COLORS);
 (function personCss() { let css = ''; for (let i = 0; i < MAX_PEOPLE; i++) { css += `:root{--p${i}-soft:color-mix(in srgb,var(--p${i}) var(--soft-mix),var(--surface));}
 .avatar.p${i}{background:var(--p${i});color:var(--p${i}-ink)} .chip.p${i}.on{background:var(--p${i});border-color:var(--p${i});color:var(--p${i}-ink)} .dot.p${i}{background:var(--p${i})} .fill.p${i}{background:var(--p${i})}
-.day.on.p${i}{background:var(--p${i});border-color:var(--p${i});color:var(--p${i}-ink)} .catchk.on.p${i}{background:var(--p${i});color:var(--p${i}-ink)} select.who-sel.p${i}{background-color:var(--p${i}-soft);border-color:var(--p${i})}\n`; } const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st); })();
+.day.on.p${i}{background:var(--p${i});border-color:var(--p${i});color:var(--p${i}-ink)} .ck.on.p${i}{background:var(--p${i});color:var(--p${i}-ink)} select.who-sel.p${i}{background-color:var(--p${i}-soft);border-color:var(--p${i})}\n`; } const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st); })();
 
 const CATS = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly / as needed' };
 const DEFAULT_PEOPLE = ['Jason', 'Stacy', 'Fabian'];
@@ -871,6 +893,7 @@ const TABS = [
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const dshort = d => `${d.getDate()} ${MONTHS[d.getMonth()].toUpperCase()}`;
 const hm = ts => ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) : '';
+const clock = s => { const m = /^(\d{1,2}):(\d{2})$/.exec(s || ''); if (!m) return esc(s || ''); const d = new Date(); d.setHours(+m[1], +m[2], 0, 0); return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
 const hmAmpm = ts => ts ? new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
 function ago(ts) { if (!ts) return ''; const s = (Date.now() - ts) / 1000; if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s / 60)} min ago`; if (s < 86400) return `${Math.floor(s / 3600)} h ago`; return new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
 function agoShort(ts) { if (!ts) return ''; const s = (Date.now() - ts) / 1000; if (s < 60) return 'now'; if (s < 3600) return `${Math.floor(s / 60)}m`; if (s < 86400) return `${Math.floor(s / 3600)}h`; if (s < 6 * 86400) return DAYS[(new Date(ts).getDay() + 6) % 7]; return `${MONTHS[new Date(ts).getMonth()]} ${new Date(ts).getDate()}`; }
@@ -923,8 +946,8 @@ function weekScores(ws, regularOnly = false) {
   });
 }
 function weekSummary(ws) { return weekScores(ws, true); }
-function personChips(scores) {
-  return `<div class="chips">${scores.map(s => `<button class="chip ${ckPerson === s.i ? 'on' : ''}" data-i="${s.i}">${dotOf(s.i)}${esc(s.p)}<span class="pc">${s.pct}%</span></button>`).join('')}</div>`;
+function scoreCards(scores) {
+  return `<div class="cards">${scores.map(s => `<button class="sc ${ckPerson === s.i ? 'on' : ''}" data-i="${s.i}" aria-label="Show ${esc(s.p)}"><div class="nm"><span class="dot p${s.i}"></span><span class="grow" style="overflow:hidden;text-overflow:ellipsis">${esc(s.p)}</span>${state.presence[s.i] && s.i !== me ? '<span class="online" title="online"></span>' : ''}</div><div class="pct">${s.pct}%</div><div class="pts">${fmt(s.done)} / ${fmt(s.planned)} pts${s.bonus ? ` +${fmt(s.bonus)}` : ''}</div><div class="track"><div class="fill p${s.i}" style="width:${Math.min(100, s.pct)}%"></div></div></button>`).join('')}</div>`;
 }
 function renderWrapCard() {
   if (ckWeekOffset !== 0) return ''; const dow = todayIdx(); if (dow > 2) return '';
@@ -951,7 +974,7 @@ function renderToday() {
   if (todayMode === 'today') { title = now.toLocaleDateString([], { weekday: 'long' }); meta = `${dshort(now)} · ${esc(String(who).toUpperCase())}`; }
   else { title = isCur ? 'This week' : ckWeekOffset === -1 ? 'Last week' : `Week of ${ws.toLocaleDateString([], { month: 'short', day: 'numeric' })}`; meta = `${ws.getMonth() === we.getMonth() ? ws.getDate() + '–' + dshort(we) : dshort(ws) + ' – ' + dshort(we)} · ${esc(String(who).toUpperCase())}`; }
   const body = todayMode === 'today' ? renderTodayList(scores) : renderWeekGrid(scores, ws);
-  return pageHeader(title, meta, seg) + personChips(scores) + renderVoteBanner() + (todayMode === 'today' ? renderWrapCard() : '') + body;
+  return pageHeader(title, meta, seg) + scoreCards(scores) + renderVoteBanner() + (todayMode === 'today' ? renderWrapCard() : '') + body;
 }
 function renderTodayList(scores) {
   const wkKey = weekKey(new Date()); const wk = weekIndex(new Date()); const ti = todayIdx(); const checks = state.allChecks[wkKey] || {};
@@ -959,61 +982,76 @@ function renderTodayList(scores) {
   const todayCheck = t => (checks[t.id] || {})[ti];
   const active = state.tasks.filter(t => t.on);
   const isCat = t => catRe.test(t.name) && targetFor(t) >= 5;
-  const shown = new Set(); let out = '';
-  // --- Needs attention: house alerts (today / tomorrow) + overdue tasks house-wide ---
+  const pts = t => `${t.effort} pt${t.effort > 1 ? 's' : ''}`;
+  const nameOf = i => i === me ? 'you' : esc(state.people[i] ?? '');
+  const ck = (on, by, attrs, lockedBy, extra = '') => { const locked = lockedBy !== null && lockedBy !== undefined; return `<button class="ck ${on ? 'on p' + (by ?? 0) : ''} ${locked ? 'locked' : ''} ${extra}" ${attrs} aria-label="${on ? 'Done' : 'Mark done'}" ${locked ? 'title="Only ' + esc(state.people[lockedBy] ?? '') + ' can undo this"' : ''}>${on ? '✓' : ''}</button>`; };
+  const row = (cls, check, name, m, right, attrs = '', style = '') => `<div class="tr ${cls}" ${attrs} ${style ? `style="${style}"` : ''}>${check}<div class="t">${name}${m ? `<span class="m ${m[0]}">${m[1]}</span>` : ''}</div>${right ? `<div class="rt">${right}</div>` : ''}</div>`;
+  let out = '';
+  // --- Needs attention: house alerts (today / tomorrow) + overdue tasks that aren't yours ---
   const tomorrow = (ti + 1) % 7;
   const alerts = Object.entries(state.alerts).filter(([, a]) => a && (a.dow === ti || a.dow === tomorrow)).sort((a, b) => (a[1].dow === ti ? 0 : 1) - (b[1].dow === ti ? 0 : 1));
   const overdueAll = state.tasks.map(t => ({ t, o: overdueInfo(t) })).filter(x => x.o).sort((a, b) => b.o.sev - a.o.sev || b.o.days - a.o.days);
   const overdue = overdueAll.filter(({ t }) => !isCat(t) && assigneeThisWeek(t, wk) !== ckPerson); // your own overdue tasks sit at the top of your own lists below
   const attn = [];
   for (const [id, a] of alerts) { const done = (state.alertDone || {})[id]; const isToday = a.dow === ti;
-    attn.push(`<div class="jl ${done ? 'done' : ''}" data-alert-row="${id}">${done ? gut(hm(done.ts) || '✓', esc(state.people[done.by] ?? '')) : gut(isToday ? 'TODAY' : DAYS[a.dow].toUpperCase(), esc(a.time))}<div class="t">${a.emoji || '🔔'} ${esc(a.name)}<span class="m">${done ? `done${done.ts ? ' at ' + hmAmpm(done.ts) : ''} · ${esc(state.people[done.by] ?? '')}` : esc(a.note || (isToday ? 'today' : 'tomorrow'))}</span></div><div class="rt">${chk(!!done, `data-alert="${id}"`, done && done.by !== me ? done.by : null)}</div></div>`); }
-  overdue.slice(0, 6).forEach(({ t, o }) => { const c = todayCheck(t); const resp = assigneeThisWeek(t, wk); const st = overdueStyle(o);
-    attn.push(`<div class="jl od" data-id="${t.id}" style="${st}">${gut(`${o.days}d`, o.last ? 'late' : 'never')}<div class="t">${esc(t.name)}${noteBtn(t)}<span class="m">${o.text.replace(/^[^·]*· /, '')}${resp >= 0 ? ` · ${esc(state.people[resp])}${dotOf(resp)}` : ' · unassigned'}</span></div><div class="rt">${chk(!!c, `data-id="${t.id}" data-day="${ti}"`, c && c.by !== me ? c.by : null)}</div></div>`); });
-  if (attn.length) out += `<h3 class="g">Needs attention <span>${attn.length} item${attn.length === 1 ? '' : 's'}${overdue.length > 6 ? ` · +${overdue.length - 6} more in Plan` : ''}</span></h3><div class="today-list">${attn.join('')}</div>`;
+    attn.push(row(done ? 'done' : '', ck(!!done, done && done.by, `data-alert="${id}"`, done && done.by !== me ? done.by : null, done ? '' : 'dash'), `${a.emoji || '🔔'} ${esc(a.name)}`,
+      done ? ['g', `Done${done.ts ? ' at ' + hmAmpm(done.ts) : ''} · ${nameOf(done.by)}`] : ['w', `${isToday ? 'Today' : 'Tomorrow'} by ${clock(a.time)}${a.note ? ` <span class="dim">· ${esc(a.note)}</span>` : ''}`],
+      `<b>${DAYS[a.dow].toUpperCase()}</b>${clock(a.time)}`)); }
+  overdue.slice(0, 6).forEach(({ t, o }) => { const c = todayCheck(t); const resp = assigneeThisWeek(t, wk);
+    attn.push(row(c ? 'done' : 'od', ck(!!c, c && c.by, `data-id="${t.id}" data-day="${ti}"`, c && c.by !== me ? c.by : null), `${esc(t.name)}${noteBtn(t)}`,
+      c ? ['g', `Done at ${hmAmpm(c.ts)} · ${nameOf(c.by)}`] : ['r', `${o.days} day${o.days === 1 ? '' : 's'} ${o.last ? 'late' : 'overdue'} · usually ${humanInterval(o.iv)}${resp >= 0 ? ` <span class="dim">· ${esc(state.people[resp])}</span>${dotOf(resp)}` : ' <span class="dim">· unassigned</span>'}`],
+      pts(t), `data-id="${t.id}"`, overdueStyle(o))); });
+  if (attn.length) out += `<h3 class="g">Needs attention <span>${attn.length} item${attn.length === 1 ? '' : 's'}${overdue.length > 6 ? ` · +${overdue.length - 6} more in Plan` : ''}</span></h3>${attn.join('')}`;
   // --- Cats: shared daily log with times ---
   const cats = active.filter(isCat);
   if (cats.length) {
-    const rows = cats.map(t => { shown.add(t.id); const c = todayCheck(t); const yc = ((state.allChecks[ywk] || {})[t.id] || {})[yi]; const o = c ? null : overdueInfo(t);
-      const m = c ? `done at ${hmAmpm(c.ts)} · ${esc(state.people[c.by] ?? '')}` : (yc ? `yesterday ${hmAmpm(yc.ts)} · ${esc(state.people[yc.by] ?? '')}` : 'not yet today');
-      return `<div class="jl ${c ? 'done' : ''} ${o ? 'od' : ''}" data-id="${t.id}" style="${overdueStyle(o)}">${c ? gut(hm(c.ts), esc(state.people[c.by] ?? '')) : o ? gut(`${o.days}d`, o.last ? 'late' : 'never') : gut('—', `${t.effort} pt${t.effort > 1 ? 's' : ''}`)}<div class="t">${esc(t.name)}${noteBtn(t)}<span class="m">${o ? esc(o.text) : m}</span></div><div class="rt">${chk(!!c, `data-id="${t.id}" data-day="${ti}"`, c && c.by !== me ? c.by : null)}</div></div>`; }).join('');
+    const rows = cats.map(t => { const c = todayCheck(t); const yc = ((state.allChecks[ywk] || {})[t.id] || {})[yi]; const o = c ? null : overdueInfo(t);
+      const m = c ? ['g', `Done at ${hmAmpm(c.ts)} · ${nameOf(c.by)}`] : o ? ['r', `${o.days} day${o.days === 1 ? '' : 's'} ${o.last ? 'late' : 'overdue'} · usually ${humanInterval(o.iv)}`] : ['w', `Not yet today${yc ? ` <span class="dim">· yesterday ${hmAmpm(yc.ts)}, ${esc(state.people[yc.by] ?? '')}</span>` : ''}`];
+      return row(c ? 'done' : o ? 'od' : '', ck(!!c, c && c.by, `data-id="${t.id}" data-day="${ti}"`, c && c.by !== me ? c.by : null), `${esc(t.name)}${noteBtn(t)}`, m, pts(t), `data-id="${t.id}"`, overdueStyle(o)); }).join('');
     const done = cats.filter(t => todayCheck(t)).length;
-    out += `<h3 class="g">Cats <span>${done} of ${cats.length} today</span></h3><div class="today-list">${rows}</div>`;
+    out += `<h3 class="g">Cats <span>${done} of ${cats.length} today</span></h3>${rows}`;
   }
   // --- Today / This week / As needed for the selected person ---
   const mine = active.filter(t => assigneeThisWeek(t, wk) === ckPerson);
   const rowFor = (t, kind) => {
     const ch = checks[t.id] || {}; const n = Object.keys(ch).length; const tgt = targetFor(t); const c = ch[ti]; const complete = n >= tgt;
-    const st = taskStreak(t); const streak = st.n >= 2 ? `🔥 ${st.n}${st.unit === 'day' ? '-day' : '-week'} streak` : '';
+    const st = taskStreak(t); const streak = st.n >= 2 ? `🔥 ${st.n}-${st.unit} streak` : '';
+    const turn = t.who === 'rot' ? (ckPerson === me ? '↻ your turn this week' : '↻ their turn this week') : '';
     const o = complete ? null : overdueInfo(t);
-    let g, m, on = false, locked = null, cls = '', extra = '';
-    if (kind === 'today') { on = !!c; locked = c && c.by !== me ? c.by : null; if (c) { g = gut(hm(c.ts), esc(c.by === me ? 'you' : state.people[c.by] ?? '')); m = t.who === 'rot' ? '↻ your turn this week' : (streak || ''); cls = 'done'; } else if (o) { g = gut(`${o.days}d`, o.last ? 'late' : 'never'); m = esc(o.text); cls = 'od'; } else { g = gut('—', `${t.effort} pt${t.effort > 1 ? 's' : ''}`); m = streak || (t.who === 'rot' ? '↻ your turn this week' : ''); } }
-    else { const last = Object.entries(ch).sort((a, b) => (b[1].ts || 0) - (a[1].ts || 0))[0]; const mineAny = Object.values(ch).some(x => x && x.by === me);
-      if (c) { on = true; locked = c.by !== me ? c.by : null; g = gut(hm(c.ts), esc(c.by === me ? 'you' : state.people[c.by] ?? '')); m = complete ? `done${tgt > 1 ? ` · ${n}/${tgt} this week` : ''}` : `${n}/${tgt} this week`; if (complete) cls = 'done'; }
-      else if (complete) { on = true; locked = mineAny ? null : (last ? last[1].by : null); g = gut(hm(last[1].ts) || '✓', DAYS[+last[0]]); m = `done${tgt > 1 ? ` ${n}/${tgt}` : ''} · ${esc(last[1].by === me ? 'you' : state.people[last[1].by] ?? '')}${n > tgt ? ` · +${n - tgt} extra` : ''}`; cls = 'done'; }
-      else if (o) { g = gut(`${o.days}d`, o.last ? 'late' : 'never'); m = esc(o.text) + (n ? ` · ${n}/${tgt}` : ''); cls = 'od'; }
-      else { g = gut(n ? `${n}/${tgt}` : '—', `${t.effort} pt${t.effort > 1 ? 's' : ''}`); m = kind === 'need' ? humanInterval(intervalDays(t)) : (tgt > 1 ? `${tgt}× this week` : 'any day this week') + (streak ? ' · ' + streak : '') + (t.who === 'rot' ? ' · ↻ your turn' : ''); if (n) extra = 'dash'; } }
-    return `<div class="jl ${cls}" data-id="${t.id}" style="${cls === 'od' ? overdueStyle(o) : ''}">${g}<div class="t">${esc(t.name)}${noteBtn(t)}<span class="m">${m}</span></div><div class="rt">${chk(on, `data-id="${t.id}" data-day="${ti}" ${kind !== 'today' ? 'data-weekly="1"' : ''}`, locked, extra)}</div></div>`;
+    let m = null, on = false, by = null, locked = null, cls = '', extra = '';
+    if (kind === 'today') {
+      if (c) { on = true; by = c.by; locked = c.by !== me ? c.by : null; cls = 'done'; m = ['g', `Done at ${hmAmpm(c.ts)} · ${nameOf(c.by)}`]; }
+      else if (o) { cls = 'od'; m = ['r', `${o.days} day${o.days === 1 ? '' : 's'} late · usually ${humanInterval(o.iv)}`]; }
+      else { const bits = [streak, turn].filter(Boolean).join(' · '); m = bits ? ['dim', bits] : null; }
+    } else {
+      const last = Object.entries(ch).sort((a, b) => (b[1].ts || 0) - (a[1].ts || 0))[0]; const mineAny = Object.values(ch).some(x => x && x.by === me);
+      const prog = tgt > 1 ? `${n}/${tgt} this week` : '';
+      if (c) { on = true; by = c.by; locked = c.by !== me ? c.by : null; if (complete) cls = 'done'; m = ['g', `Done at ${hmAmpm(c.ts)} · ${nameOf(c.by)}${prog ? ` <span class="dim">· ${prog}</span>` : ''}`]; }
+      else if (complete) { on = true; by = last[1].by; locked = mineAny ? null : last[1].by; cls = 'done'; m = ['g', `Done ${DAYS[+last[0]]} · ${nameOf(last[1].by)}${n > tgt ? ` <span class="dim">· +${n - tgt} extra</span>` : ''}`]; }
+      else if (o) { cls = 'od'; m = ['r', `${o.days} day${o.days === 1 ? '' : 's'} late · usually ${humanInterval(o.iv)}${n ? ` · ${n}/${tgt}` : ''}`]; }
+      else { if (n) extra = 'dash'; const bits = [prog || (kind === 'need' ? humanInterval(intervalDays(t)) : 'any day this week'), streak, turn].filter(Boolean).join(' · '); m = ['dim', bits]; }
+    }
+    return row(cls, ck(on, by, `data-id="${t.id}" data-day="${ti}" ${kind !== 'today' ? 'data-weekly="1"' : ''}`, locked, extra), `${esc(t.name)}${noteBtn(t)}`, m, pts(t), `data-id="${t.id}"`, cls === 'od' ? overdueStyle(o) : '');
   };
-  const daily = mine.filter(t => targetFor(t) >= 5 && !shown.has(t.id));
-  const weekly = mine.filter(t => t.freq >= 1 && targetFor(t) < 5 && !shown.has(t.id));
-  const need = mine.filter(t => t.freq < 1 && !shown.has(t.id));
-  const sortRows = arr => [...arr].sort((a, b) => { const r = t => { const ch = checks[t.id] || {}; return Object.keys(ch).length >= targetFor(t) ? 2 : ch[ti] ? 1 : 0; }; const od = t => overdueInfo(t) ? 0 : 1; return r(a) - r(b) || od(a) - od(b) || (b.who === 'rot') - (a.who === 'rot'); });
-  const dAll = mine.filter(t => targetFor(t) >= 5); const dDone = dAll.filter(t => todayCheck(t)); const dPts = dDone.reduce((a, t) => a + t.effort, 0);
-  out += `<h3 class="g">Today <span>${dAll.length ? `${dAll.length - dDone.length} left` : 'nothing daily'}</span></h3>`;
-  out += daily.length ? `<div class="today-list">${sortRows(daily).map(t => rowFor(t, 'today')).join('')}</div>` : (dAll.length ? '' : `<div class="empty">No daily tasks for ${esc(ckPerson === me ? 'you' : state.people[ckPerson])} — assign some in Plan.</div>`);
-  if (dAll.length) out += `<div class="bal"><span class="k">BAL</span><span>${dDone.length} of ${dAll.length} · ${dPts} pt${dPts === 1 ? '' : 's'}</span><b>${Math.round(dDone.length / dAll.length * 100)}%</b></div>`;
-  const s = scores[ckPerson] || { done: 0, planned: 0, pct: 0 };
+  const dAll = mine.filter(t => targetFor(t) >= 5 && !isCat(t)); const dDone = dAll.filter(t => todayCheck(t)); const dPts = dDone.reduce((a, t) => a + t.effort, 0);
   const wAll = mine.filter(t => t.freq >= 1 && targetFor(t) < 5); const wDone = wAll.filter(t => Object.keys(checks[t.id] || {}).length >= targetFor(t)).length;
+  const need = mine.filter(t => t.freq < 1);
+  const sortRows = arr => [...arr].sort((a, b) => { const r = t => { const ch = checks[t.id] || {}; return Object.keys(ch).length >= targetFor(t) ? 2 : ch[ti] ? 1 : 0; }; const od = t => overdueInfo(t) ? 0 : 1; return r(a) - r(b) || od(a) - od(b) || (b.who === 'rot') - (a.who === 'rot'); });
+  const whoLbl = ckPerson === me ? 'you' : esc(state.people[ckPerson]);
+  out += `<h3 class="g">Today <span>${dAll.length ? `${dAll.length - dDone.length} left` : 'nothing daily'}</span></h3>`;
+  out += dAll.length ? sortRows(dAll).map(t => rowFor(t, 'today')).join('') : `<div class="empty">No daily tasks for ${whoLbl} — assign some in Plan.</div>`;
+  const catMine = mine.filter(isCat); const catDone = catMine.filter(t => todayCheck(t)).length;
+  if (dAll.length || catMine.length) out += `<div class="bal"><span class="k">BAL</span><span>${dDone.length + catDone} of ${dAll.length + catMine.length} today · ${dPts + catMine.filter(t => todayCheck(t)).reduce((a, t) => a + t.effort, 0)} pts${catMine.length ? ` <span class="dim">(incl. cats)</span>` : ''}</span><b>${Math.round((dDone.length + catDone) / (dAll.length + catMine.length) * 100)}%</b></div>`;
+  const s = scores[ckPerson] || { done: 0, planned: 0, pct: 0 };
   if (wAll.length) {
-    out += `<h3 class="g">This week <span>${wDone} of ${wAll.length}</span></h3><div class="today-list">${sortRows(weekly).map(t => rowFor(t, 'week')).join('')}</div>`;
+    out += `<h3 class="g">This week <span>${wDone} of ${wAll.length}</span></h3>${sortRows(wAll).map(t => rowFor(t, 'week')).join('')}`;
     out += `<div class="bal"><span class="k">BAL</span><span>${fmt(s.done)} of ${fmt(s.planned)} pts this week${s.bonus ? ` · +${fmt(s.bonus)}` : ''}</span><b>${s.pct}%</b></div>`;
   }
-  if (need.length) out += `<h3 class="g">As needed <span>${need.length}</span></h3><div class="today-list">${sortRows(need).map(t => rowFor(t, 'need')).join('')}</div>`;
+  if (need.length) out += `<h3 class="g">As needed <span>${need.length}</span></h3>${sortRows(need).map(t => rowFor(t, 'need')).join('')}`;
   // --- We're out of ---
   const items = Object.entries(state.list).sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0));
-  out += `<h3 class="g">We're out of <span>${items.length ? items.length + ' item' + (items.length === 1 ? '' : 's') : 'nothing right now'}</span></h3><div class="today-list">${items.map(([id, it]) => `<div class="jl">${gut(agoShort(it.ts), esc(state.people[it.by] ?? ''))}<div class="t">${esc(it.text)}</div><div class="rt">${chk(false, `data-list="${id}"`, null, 'round')}</div></div>`).join('')}
-    <form id="shopForm" class="jl"><div class="gut"><b>+</b></div><input class="lineinput" name="text" placeholder="Add something we need…" autocomplete="off" style="font-weight:500"><button class="btn sm" type="submit">Add</button></form></div>`;
+  out += `<h3 class="g">We're out of <span>${items.length ? items.length + ' item' + (items.length === 1 ? '' : 's') : 'nothing right now'}</span></h3>${items.map(([id, it]) => row('', ck(false, null, `data-list="${id}"`, null, 'round'), esc(it.text), ['dim', `${dotOf(it.by)} ${esc(state.people[it.by] ?? '')} · ${ago(it.ts)}`], '')).join('')}
+    <form id="shopForm" class="tr"><span class="ck round" style="border-style:dashed;pointer-events:none"></span><input class="lineinput" name="text" placeholder="Add something we need…" autocomplete="off" style="font-weight:500"><button class="btn sm" type="submit">Add</button></form>`;
   return out;
 }
 function renderWeekGrid(scores, ws) {
@@ -1034,8 +1072,8 @@ function renderWeekGrid(scores, ws) {
   }).join('');
   const s = scores[ckPerson] || { done: 0, planned: 0, pct: 0 };
   const rots = active.filter(t => t.who === 'rot');
-  const rotLine = rots.length ? `<div class="bal"><span class="k">ROT</span><span>${rots.map(t => `${esc(t.name)} → <b>${esc(state.people[rotAssignee(t, wk)])}</b>`).join(' · ')}</span><b></b></div>` : '';
-  return (groups || `<div class="empty">No tasks assigned to ${esc(state.people[ckPerson])} this week — assign some in Plan.</div>`) + `<div class="bal"><span class="k">BAL</span><span>${fmt(s.done)} of ${fmt(s.planned)} pts${s.bonus ? ` · +${fmt(s.bonus)} extra` : ''}</span><b>${s.pct}%</b></div>` + rotLine;
+  const rotLine = rots.length ? `<div class="note">↻ <b>Rotation this week:</b> ${rots.map(t => `${esc(t.name)} → ${rotAssignee(t, wk) === ckPerson ? '<b>' + esc(state.people[rotAssignee(t, wk)]) + '</b>' : esc(state.people[rotAssignee(t, wk)])}`).join(' · ')}</div>` : '';
+  return rotLine + (groups || `<div class="empty">No tasks assigned to ${esc(state.people[ckPerson])} this week — assign some in Plan.</div>`) + `<div class="bal"><span class="k">BAL</span><span>${fmt(s.done)} of ${fmt(s.planned)} pts${s.bonus ? ` · +${fmt(s.bonus)} extra` : ''}</span><b>${s.pct}%</b></div>`;
 }
 
 // ---------- Plan ----------
@@ -1190,7 +1228,7 @@ function renderHouse() {
   const r = { daily: false, time: '18:00', wrap: true, ...myReminders() }; const sup = pushSupport();
   const tokens = Object.keys((state.prefs && state.prefs.push) || {}).length; const perm = ('Notification' in window) ? Notification.permission : 'unsupported';
   const mineAl = (state.prefs && state.prefs.alerts) || {};
-  const alertRows = Object.entries(state.alerts).sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0)).map(([id, a]) => `<div class="jl">${gut(DAYS[a.dow].toUpperCase(), esc(a.time))}<div class="t">${a.emoji || '🔔'} ${esc(a.name)}${a.note ? `<span class="m">${esc(a.note)}</span>` : ''}</div><div class="rt"><label class="row" style="gap:5px"><span class="hint">notify</span><input type="checkbox" class="toggle alert-sub" data-id="${id}" ${mineAl[id] ? 'checked' : ''} ${sup.ok ? '' : 'disabled'}></label><button class="notebtn rm-alert" data-id="${id}" title="Remove" style="font-size:17px">×</button></div></div>`).join('');
+  const alertRows = Object.entries(state.alerts).sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0)).map(([id, a]) => `<div class="jl">${gut(DAYS[a.dow].toUpperCase(), clock(a.time))}<div class="t">${a.emoji || '🔔'} ${esc(a.name)}${a.note ? `<span class="m">${esc(a.note)}</span>` : ''}</div><div class="rt"><label class="row" style="gap:5px"><span class="hint">notify</span><input type="checkbox" class="toggle alert-sub" data-id="${id}" ${mineAl[id] ? 'checked' : ''} ${sup.ok ? '' : 'disabled'}></label><button class="notebtn rm-alert" data-id="${id}" title="Remove" style="font-size:17px">×</button></div></div>`).join('');
   return pageHeader('House', `${state.people.length} PEOPLE${others.length ? ` · ${others.length + 1} HOUSES` : ''}`) + renderVoteBanner()
     + `<div class="field" style="margin-top:12px"><label>House name</label><input class="lineinput pn hn" id="houseName" value="${esc(state.houseName || (houseId === 'main' ? 'Our house' : ''))}" placeholder="Name your house" style="font-family:var(--serif);font-size:20px"></div>`
     + (others.length ? `<div class="chips" style="padding-top:0"><span class="hint" style="align-self:center">Switch house:</span>${others.map(h => `<button class="chip sw-house" data-h="${esc(h)}">${esc(h === 'main' ? 'Our house' : h.slice(-6))}</button>`).join('')}</div>` : '')
@@ -1220,10 +1258,10 @@ function renderHouse() {
 function wire() {
   const v = $('view');
   v.querySelectorAll('.seg button[data-mode]').forEach(b => b.onclick = () => { todayMode = b.dataset.mode; if (todayMode === 'today') { ckWeekOffset = 0; } render(); });
-  v.querySelectorAll('.chip[data-i]').forEach(b => b.onclick = () => { ckPerson = +b.dataset.i; render(); });
+  v.querySelectorAll('.chip[data-i], .sc[data-i]').forEach(b => b.onclick = () => { ckPerson = +b.dataset.i; render(); });
   v.querySelectorAll('.tabs button[data-f]').forEach(b => b.onclick = () => { boardFilter = b.dataset.f; render(); });
   v.querySelectorAll('.tabs button[data-it]').forEach(b => b.onclick = () => { insightsTab = b.dataset.it; render(); });
-  v.querySelectorAll('.chk[data-id][data-day]').forEach(el => el.onclick = () => { const t = T(el.dataset.id); if (!t) return; ckWeekOffset = 0;
+  v.querySelectorAll('.chk[data-id][data-day], .ck[data-id][data-day]').forEach(el => el.onclick = () => { const t = T(el.dataset.id); if (!t) return; ckWeekOffset = 0;
     if (el.dataset.weekly) { // weekly task in Today mode: check today, or undo the latest of my checks
       const ch = state.checks[t.id] || {}; const n = Object.keys(ch).length; const tgt = targetFor(t); const day = todayIdx();
       if (ch[day]) return toggleCheck(t, day);
@@ -1232,8 +1270,8 @@ function wire() {
     }
     toggleCheck(t, +el.dataset.day); });
   v.querySelectorAll('.day').forEach(el => el.onclick = () => { const t = T(el.dataset.id); if (t) toggleCheck(t, +el.dataset.day); });
-  v.querySelectorAll('.chk[data-alert]').forEach(b => b.onclick = () => markAlertDone(b.dataset.alert));
-  v.querySelectorAll('.chk[data-list]').forEach(b => b.onclick = () => removeListItem(b.dataset.list));
+  v.querySelectorAll('.chk[data-alert], .ck[data-alert]').forEach(b => b.onclick = () => markAlertDone(b.dataset.alert));
+  v.querySelectorAll('.chk[data-list], .ck[data-list]').forEach(b => b.onclick = () => removeListItem(b.dataset.list));
   v.querySelectorAll('.notebtn[data-note]').forEach(el => el.onclick = e => { e.preventDefault(); e.stopPropagation(); openNote(el.dataset.note, true); });
   v.querySelectorAll('.jl[data-open]').forEach(el => el.onclick = e => { if (e.target.closest('.notebtn')) return; openTaskSheet(el.dataset.open); });
   const wp = $('wkPrev'); if (wp) wp.onclick = () => { ckWeekOffset--; subscribeChecks(); render(); };
@@ -1271,7 +1309,7 @@ function wire() {
   const bi = $('btnInstall'); if (bi) bi.onclick = async () => { if (!installPrompt) return; installPrompt.prompt(); try { await installPrompt.userChoice; } catch {} installPrompt = null; render(); };
   const nh = $('btnNewHouse'); if (nh) nh.onclick = () => { $('app').classList.remove('ready'); showOnboarding((user.email || '').toLowerCase()); $('gateMsg').innerHTML = `Create another house for <b>${esc((user.email || '').toLowerCase())}</b> — you can switch between them from the House tab.`; const back = document.createElement('button'); back.className = 'btn ghost'; back.style.marginTop = '10px'; back.textContent = 'Back'; back.onclick = () => { $('gate').style.display = 'none'; $('app').classList.add('ready'); }; $('onboard').appendChild(back); };
 }
-function flash(id) { const el = document.querySelector(`.jl[data-id="${id}"], .wk[data-id="${id}"]`); if (!el) return; el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+function flash(id) { const el = document.querySelector(`.jl[data-id="${id}"], .wk[data-id="${id}"], .tr[data-id="${id}"]`); if (!el) return; el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
 
 // ---------- Sheet (modal) ----------
 function openModal(title, bodyHTML, actions, closable = true) {
