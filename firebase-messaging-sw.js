@@ -33,8 +33,8 @@ self.addEventListener('notificationclick', e => {
 // Offline fallback (only used when the network is unreachable)
 const OFFLINE_CACHE = 'chores-offline-v1';
 const OFFLINE_HTML = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chores — offline</title>
-<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#f5f5f3;color:#141413;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:24px">
-<div><div style="font-size:40px">📡</div><h1 style="font-size:20px;margin:8px 0">You're offline</h1><p style="color:#55544f">The chore board needs a connection so everyone sees the same thing. Try again when you're back online.</p><button onclick="location.reload()" style="padding:10px 16px;border-radius:10px;border:0;background:#2a78d6;color:#fff;font-weight:600">Retry</button></div></body>`;
+<body style="font-family:Georgia,serif;background:#f6f2ea;color:#221f1a;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:24px">
+<div><div style="font-size:40px">📡</div><h1 style="font-size:20px;margin:8px 0">You're offline</h1><p style="color:#55544f">The chore board needs a connection so everyone sees the same thing. Try again when you're back online.</p><button onclick="location.reload()" style="padding:10px 16px;border-radius:10px;border:0;background:#221f1a;color:#f6f2ea;font-weight:600">Retry</button></div></body>`;
 self.addEventListener('install', e => { e.waitUntil(caches.open(OFFLINE_CACHE).then(c => c.put('offline', new Response(OFFLINE_HTML, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => e.waitUntil(clients.claim()));
 self.addEventListener('fetch', e => {
