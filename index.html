@@ -899,16 +899,16 @@ function projStats(p) {
   const done = steps.filter(s => s.done);
   const totPts = steps.reduce((a, s) => a + s.pts, 0);
   const earned = done.reduce((a, s) => a + s.pts, 0);
-  const by = {}; done.forEach(s => { const b = s.done.by ?? 0; by[b] = (by[b] || 0) + s.pts; });
+  const by = {}; done.forEach(s => { const b = s.done.by; if (b === undefined || !state.people[b]) return; by[b] = (by[b] || 0) + s.pts; });
   const complete = steps.length > 0 && done.length === steps.length;
   const finished = complete ? Math.max(...done.map(s => s.done.ts || 0)) : null;
   const pct = totPts ? Math.round(earned / totPts * 100) : 0;
   return { steps, total: steps.length, nDone: done.length, totPts, earned, by, complete, finished, pct };
 }
-function dueInfo(p) { if (!p || !p.due) return null; const [y, m, d] = String(p.due).split('-').map(Number); if (!y || !m || !d) return null; const dt = new Date(y, m - 1, d, 23, 59); return { dt, days: Math.ceil((dt.getTime() - Date.now()) / 864e5), label: dt.toLocaleDateString([], { month: 'short', day: 'numeric' }) }; }
+function dueInfo(p) { if (!p || !p.due) return null; const [y, m, d] = String(p.due).split('-').map(Number); if (!y || !m || !d) return null; const dt = new Date(y, m - 1, d, 23, 59); return { dt, days: Math.floor((dt.getTime() - Date.now()) / 864e5), label: dt.toLocaleDateString([], { month: 'short', day: 'numeric' }) }; }
 function createProject(name, emoji, due, lead, defPts, stepNames) {
   const id = root.child('projects').push().key;
-  const steps = {}; stepNames.forEach((n, i) => steps['s' + String(i + 1).padStart(3, '0')] = { name: n, pts: defPts, who: -1, order: i });
+  const steps = {}; stepNames.forEach((n, i) => steps[root.child(`projects/${id}/steps`).push().key] = { name: n, pts: defPts, who: -1, order: i });
   commit({ [`projects/${id}`]: { name, emoji: emoji || '📋', due: due || null, lead: whoRaw(lead), defPts, created: firebase.database.ServerValue.TIMESTAMP, createdBy: me, steps } },
     `started the project "${name}"${stepNames.length ? ` (${stepNames.length} steps)` : ''}`);
   return id;
@@ -934,10 +934,10 @@ function toggleStep(pid, sid) {
     toast(`Un-checked ${s.name}`, { label: 'Undo', fn: () => commit({ [path]: { by: me, ts: firebase.database.ServerValue.TIMESTAMP } }, `re-checked "${s.name}" (${p.name})`, sid, 'check') });
   } else {
     commit({ [path]: { by: me, ts: firebase.database.ServerValue.TIMESTAMP } }, `checked off "${s.name}" (${p.name}) ✓`, sid, 'check');
-    const others = Object.entries(p.steps || {}).filter(([k]) => k !== sid);
-    const willComplete = others.length >= 0 && others.every(([, x]) => x.done);
-    if (willComplete) setTimeout(() => { confetti(); toast(`🎉 ${p.name} — project complete!`); commit({}, `finished the project "${p.name}" 🎉`); }, 400);
-    else toast(`✓ ${s.name}`, { label: 'Undo', fn: () => commit({ [path]: null }, `un-checked "${s.name}" (${p.name})`, sid, 'check') });
+    const willComplete = Object.entries(p.steps || {}).filter(([k]) => k !== sid).every(([, x]) => x.done);
+    toast(willComplete ? `🎉 ${s.name} — that finishes ${p.name}!` : `✓ ${s.name}`, { label: 'Undo', fn: () => commit({ [path]: null }, `un-checked "${s.name}" (${p.name})`, sid, 'check') });
+    if (willComplete && !toggleStep._done) toggleStep._done = {};
+    if (willComplete && !toggleStep._done[pid]) { toggleStep._done[pid] = true; setTimeout(() => { confetti(); commit({}, `finished the project "${p.name}" 🎉`); }, 400); }
   }
 }
 
@@ -1137,8 +1137,8 @@ function renderTodayList(scores) {
     let wait = 0, waitPts = 0;
     out += projGroups.map(g => {
       wait += g.waiting.length; waitPts += g.waiting.reduce((a, s) => a + s.pts, 0);
-      const done = g.doneToday.map(s => row('done', ckBox(true, s.done.by, `data-step="${s.id}" data-pid="${g.pid}"`, s.done.by !== me ? s.done.by : null), `${esc(s.name)}`, ['g', `Done at ${hmAmpm(s.done.ts)} · ${nameOf(s.done.by)} <span class="dim">· ${g.p.emoji || '📋'} ${esc(g.p.name)}</span>`], `${s.pts} pt${s.pts > 1 ? 's' : ''}`, `data-id="${s.id}"`)).join('');
-      const todo = g.show.map((s, i) => row('', ckBox(false, null, `data-step="${s.id}" data-pid="${g.pid}"`, null), `${esc(s.name)}`, ['dim', `${g.p.emoji || '📋'} ${esc(g.p.name)} · ${s.who === ckPerson ? (ckPerson === me ? 'yours' : 'theirs') : 'anyone'} · ${s.pts} pt${s.pts > 1 ? 's' : ''}`], i === 0 ? `${g.st.pct}%` : '', `data-id="${s.id}"`)).join('');
+      const done = g.doneToday.map(s => row('done', ckBox(true, s.done.by, `data-step="${s.id}" data-pid="${g.pid}"`, s.done.by !== me ? s.done.by : null), `${esc(s.name)}`, ['g', `Done at ${hmAmpm(s.done.ts)} · ${nameOf(s.done.by)} <span class="dim">· ${esc(g.p.emoji || '📋')} ${esc(g.p.name)}</span>`], `${s.pts} pt${s.pts > 1 ? 's' : ''}`, `data-id="${s.id}"`)).join('');
+      const todo = g.show.map((s, i) => row('', ckBox(false, null, `data-step="${s.id}" data-pid="${g.pid}"`, null), `${esc(s.name)}`, ['dim', `${esc(g.p.emoji || '📋')} ${esc(g.p.name)} · ${s.who === ckPerson ? (ckPerson === me ? 'yours' : 'theirs') : 'anyone'} · ${s.pts} pt${s.pts > 1 ? 's' : ''}`], i === 0 ? `${g.st.pct}%` : '', `data-id="${s.id}"`)).join('');
       return done + todo;
     }).join('');
     out += `<div class="bal"><span class="k">PROJ</span><span>${wait ? `${wait} step${wait === 1 ? '' : 's'} waiting · <b>+${waitPts} pts</b> up for grabs` : 'all caught up'}</span><b></b></div>`;
@@ -1181,12 +1181,12 @@ const planSeg = () => `<div class="seg"><button class="${planMode === 'chores' ?
 function projLeadLabel(p) { const l = whoRaw(p.lead); return l >= 0 ? `led by ${esc(state.people[l] ?? '')}` : 'everyone'; }
 function projCard(pid, p, st, sel) {
   const due = dueInfo(p);
-  const meta = st.complete ? `completed ${new Date(st.finished).toLocaleDateString([], { month: 'short', day: 'numeric' })} · ${st.total} steps · ${st.earned} pts` : `${projLeadLabel(p)}${due ? ` · due ${due.label}` : ''}`;
+  const meta = st.complete ? `completed${st.finished ? ' ' + new Date(st.finished).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''} · ${st.total} steps · ${st.earned} pts` : `${projLeadLabel(p)}${due ? ` · due ${due.label}` : ''}`;
   const bar = `<div class="pbar">${Object.entries(st.by).sort((x, y) => x[0] - y[0]).map(([i, pts]) => `<i class="fill p${i}" style="width:${st.totPts ? pts / st.totPts * 100 : 0}%"></i>`).join('')}</div>`;
   const byLine = Object.entries(st.by).sort((x, y) => y[1] - x[1]).map(([i, pts]) => `${esc(state.people[i] ?? '')} ${fmt(pts)}`).join(' · ');
   const next = st.steps.filter(s => !s.done).slice(0, 3).map((s, i) => i === 0 ? `<b>${esc(s.name)}</b>` : esc(s.name)).join(' · ');
   return `<button class="pc tap ${st.complete ? 'dim' : ''} ${sel ? 'on' : ''}" data-pid="${pid}">
-    <div class="hd"><div class="em">${p.emoji || '📋'}</div><div class="nm">${esc(p.name)}<small>${meta}</small></div><div class="pct ${st.complete ? 'ok' : ''}">${st.complete ? '✓' : st.pct + '%'}</div></div>
+    <div class="hd"><div class="em">${esc(p.emoji || '📋')}</div><div class="nm">${esc(p.name)}<small>${meta}</small></div><div class="pct ${st.complete ? 'ok' : ''}">${st.complete ? '✓' : st.pct + '%'}</div></div>
     ${st.total ? bar : ''}
     <div class="ft"><span>${st.complete ? byLine : `<b>${st.nDone} of ${st.total}</b> steps · ${fmt(st.earned)} pts earned`}</span><span>${st.complete ? '' : byLine}</span></div>
     ${!st.complete && next ? `<div class="next">Next up: ${next}</div>` : ''}</button>`;
@@ -1205,7 +1205,7 @@ function renderProjectsList() {
 }
 function renderProjectPage(pid) {
   const p = state.projects[pid]; const st = projStats(p); const due = dueInfo(p);
-  const dueTxt = due ? ` · ${due.days < 0 ? `<span style="color:var(--late)">${-due.days}d overdue</span>` : due.days + 'd left'}` : '';
+  const dueTxt = due ? ` · ${due.days < 0 ? `<span style="color:var(--late)">${-due.days}d overdue</span>` : due.days === 0 ? '<span style="color:var(--warn)">due today</span>' : due.days + 'd left'}` : '';
   const meta = `${projLeadLabel(p)}${due ? ` · due ${due.label}` : ''}${st.complete ? ' · complete 🎉' : dueTxt}`;
   const bar = `<div class="pbar" style="margin:2px 0 8px">${Object.entries(st.by).sort((x, y) => x[0] - y[0]).map(([i, pts]) => `<i class="fill p${i}" style="width:${st.totPts ? pts / st.totPts * 100 : 0}%"></i>`).join('')}</div>`;
   const byLine = Object.entries(st.by).sort((x, y) => y[1] - x[1]).map(([i, pts]) => `${dotOf(+i)} ${esc(state.people[i] ?? '')} ${fmt(pts)}`).join(' ');
@@ -1213,7 +1213,7 @@ function renderProjectPage(pid) {
   const todo = st.steps.filter(s => !s.done);
   const rows = todo.map((s, i) => `<div class="tr tap" data-sedit="${s.id}" data-id="${s.id}">${ckBox(false, null, `data-step="${s.id}" data-pid="${pid}"`, null)}<div class="t">${esc(s.name)}<span class="m dim">${s.who >= 0 ? `${esc(state.people[s.who] ?? '')}${dotOf(s.who)}` : 'anyone'} · ${s.pts} pt${s.pts > 1 ? 's' : ''}${s.notes ? ` · ${esc(s.notes)}` : ''}</span></div><div class="rt">${i === 0 ? 'up next' : ''}</div></div>`).join('');
   const doneRows = st.steps.filter(s => s.done).sort((a, b) => (b.done.ts || 0) - (a.done.ts || 0)).map(s => `<div class="tr tap done" data-sedit="${s.id}" data-id="${s.id}">${ckBox(true, s.done.by, `data-step="${s.id}" data-pid="${pid}"`, s.done.by !== me ? s.done.by : null)}<div class="t">${esc(s.name)}<span class="m g">Done ${doneWhen(s.done.ts)} · ${s.done.by === me ? 'you' : esc(state.people[s.done.by] ?? '')}</span></div><div class="rt">${s.pts} pt${s.pts > 1 ? 's' : ''}</div></div>`).join('');
-  return pageHeader(`${p.emoji || '📋'} ${esc(p.name)}`, meta, `<button class="ib" id="projBack" aria-label="Back">‹</button><button class="ib" id="projMenu" aria-label="More">⋯</button>`)
+  return pageHeader(`${esc(p.emoji || '📋')} ${esc(p.name)}`, meta, `<button class="ib" id="projBack" aria-label="Back">‹</button><button class="ib" id="projMenu" aria-label="More">⋯</button>`)
     + head + renderVoteBanner()
     + (todo.length ? `<h3 class="g">To do <span>${todo.length} left</span></h3>${rows}` : (st.total ? `<div class="note" style="margin-top:12px">🎉 Every step is done. Add more below, or use ⋯ to remove the project once you're ready.</div>` : ''))
     + (doneRows ? `<h3 class="g">Done <span>${st.nDone}</span></h3>${doneRows}` : '')
