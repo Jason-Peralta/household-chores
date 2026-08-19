@@ -321,6 +321,24 @@
   .ck.dash { border-style: dashed; }
   .ck.locked { cursor: not-allowed; }
   .ck.round { border-radius: 50%; width: 28px; height: 28px; margin: 0 4px; }
+
+  /* ============ Projects ============ */
+  .pc { display: block; width: 100%; background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 12px 14px; margin: 10px 0; text-align: left; font-family: var(--sans); color: var(--ink); }
+  .pc.tap { cursor: pointer; }
+  .pc.dim { opacity: .75; }
+  .pc .hd { display: flex; align-items: center; gap: 10px; }
+  .pc .em { font-size: 22px; width: 34px; text-align: center; flex-shrink: 0; }
+  .pc .nm { font-family: var(--serif); font-weight: 600; font-size: 17px; flex: 1; min-width: 0; }
+  .pc .nm small { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); letter-spacing: .06em; text-transform: uppercase; font-weight: 400; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pc .pct { font-family: var(--serif); font-size: 22px; font-weight: 600; flex-shrink: 0; }
+  .pc .pct.ok { color: var(--done); }
+  .pbar { height: 8px; border-radius: 4px; background: var(--card-2); margin: 10px 0 6px; overflow: hidden; display: flex; }
+  .pbar .fill { border-radius: 0; }
+  .pc .ft { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-3); gap: 8px; flex-wrap: wrap; }
+  .pc .ft b { color: var(--ink); font-weight: 600; }
+  .pc .next { font-size: 13px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--rule); color: var(--ink-2); }
+  .pc .next b { color: var(--ink); font-weight: 600; }
+  .tr.tap { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -464,7 +482,7 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 // ============================================================================
 //  State & helpers
 // ============================================================================
-let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {}, members: {}, allChecks: {}, votes: {}, colors: [...DEFAULT_COLORS], prefs: {}, alerts: {}, alertDone: {}, list: {}, started: null, houseIds: [], houseName: '' };
+let state = { people: [...DEFAULT_PEOPLE], tasks: [], presence: {}, members: {}, allChecks: {}, votes: {}, colors: [...DEFAULT_COLORS], prefs: {}, alerts: {}, alertDone: {}, list: {}, projects: {}, started: null, houseIds: [], houseName: '' };
 Object.defineProperty(state, 'checks', { get() { return state.allChecks[weekKey(selectedWeekStart())] || {}; } });
 let me = null, user = null, db = null, root = null;
 let feed = [], view = 'today', todayMode = 'today', insightsTab = 'board', boardFilter = 'all', ckPerson = null, ckWeekOffset = 0, feedShowChecks = true;
@@ -652,6 +670,7 @@ function boot() {
   root.child('alerts').on('value', s => { state.alerts = s.val() || {}; if (view === 'today' || view === 'house') render(); });
   let adRef = null, adWeek = null; const subAlertDone = () => { const k = weekKey(new Date()); if (k === adWeek) return; if (adRef) adRef.off(); adWeek = k; adRef = root.child('alertDone/' + k); adRef.on('value', s => { state.alertDone = s.val() || {}; if (view === 'today') render(); }); }; subAlertDone(); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { subAlertDone(); render(); } });
   root.child('list').on('value', s => { state.list = s.val() || {}; if (view === 'today') render(); });
+  root.child('projects').on('value', s => { state.projects = s.val() || {}; if (view === 'today' || view === 'plan' || view === 'insights') render(); });
   // seed the one alert the house asked for, once
   root.child('meta/started').transaction(cur => cur ? undefined : firebase.database.ServerValue.TIMESTAMP).catch(() => {});
   root.child('meta/started').on('value', s => { state.started = s.val() || null; });
@@ -873,6 +892,55 @@ function removeMember(key) {
 }
 
 
+// ---- Projects: named one-time checklists (a declutter, a deep clean, a move) ----
+function projSteps(p) { return Object.entries((p && p.steps) || {}).map(([id, s]) => ({ id, ...s, pts: +s.pts || 1, who: whoRaw(s.who) })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)); }
+function projStats(p) {
+  const steps = projSteps(p);
+  const done = steps.filter(s => s.done);
+  const totPts = steps.reduce((a, s) => a + s.pts, 0);
+  const earned = done.reduce((a, s) => a + s.pts, 0);
+  const by = {}; done.forEach(s => { const b = s.done.by ?? 0; by[b] = (by[b] || 0) + s.pts; });
+  const complete = steps.length > 0 && done.length === steps.length;
+  const finished = complete ? Math.max(...done.map(s => s.done.ts || 0)) : null;
+  const pct = totPts ? Math.round(earned / totPts * 100) : 0;
+  return { steps, total: steps.length, nDone: done.length, totPts, earned, by, complete, finished, pct };
+}
+function dueInfo(p) { if (!p || !p.due) return null; const [y, m, d] = String(p.due).split('-').map(Number); if (!y || !m || !d) return null; const dt = new Date(y, m - 1, d, 23, 59); return { dt, days: Math.ceil((dt.getTime() - Date.now()) / 864e5), label: dt.toLocaleDateString([], { month: 'short', day: 'numeric' }) }; }
+function createProject(name, emoji, due, lead, defPts, stepNames) {
+  const id = root.child('projects').push().key;
+  const steps = {}; stepNames.forEach((n, i) => steps['s' + String(i + 1).padStart(3, '0')] = { name: n, pts: defPts, who: -1, order: i });
+  commit({ [`projects/${id}`]: { name, emoji: emoji || '📋', due: due || null, lead: whoRaw(lead), defPts, created: firebase.database.ServerValue.TIMESTAMP, createdBy: me, steps } },
+    `started the project "${name}"${stepNames.length ? ` (${stepNames.length} steps)` : ''}`);
+  return id;
+}
+function updateProject(pid, patch, logText) { commit(Object.fromEntries(Object.entries(patch).map(([k, v]) => [`projects/${pid}/${k}`, v])), logText); }
+function removeProject(pid) { const p = (state.projects || {})[pid]; if (!p) return;
+  confirmModal(`Remove "${p.name}"?`, `Removes the project and its ${Object.keys(p.steps || {}).length} steps for everyone. Points already earned stay on the leaderboard until it's gone.`, () => { commit({ [`projects/${pid}`]: null }, `removed the project "${p.name}"`); openProject = null; }); }
+function addStep(pid, name, pts, who, notes) {
+  const p = (state.projects || {})[pid]; if (!p) return;
+  const order = Math.max(-1, ...projSteps(p).map(s => s.order ?? 0)) + 1;
+  const sid = root.child(`projects/${pid}/steps`).push().key;
+  commit({ [`projects/${pid}/steps/${sid}`]: { name, pts, who: whoRaw(who), order, notes: notes || null } }, `added "${name}" to ${p.name}`, sid);
+}
+function updateStep(pid, sid, patch, logText) { commit(Object.fromEntries(Object.entries(patch).map(([k, v]) => [`projects/${pid}/steps/${sid}/${k}`, v])), logText, sid); }
+function removeStep(pid, sid) { const p = (state.projects || {})[pid]; const s = p && p.steps && p.steps[sid]; if (!s) return;
+  confirmModal(`Remove "${s.name}"?`, 'Removes this step for everyone.', () => commit({ [`projects/${pid}/steps/${sid}`]: null }, `removed "${s.name}" from ${p.name}`)); }
+function toggleStep(pid, sid) {
+  const p = (state.projects || {})[pid]; const s = p && p.steps && p.steps[sid]; if (!s) return;
+  const path = `projects/${pid}/steps/${sid}/done`;
+  if (s.done) {
+    if (s.done.by !== undefined && s.done.by !== me) { toast(`Only ${state.people[s.done.by]} can undo that`); return; }
+    commit({ [path]: null }, `un-did "${s.name}" (${p.name})`, sid, 'check');
+    toast(`Un-checked ${s.name}`, { label: 'Undo', fn: () => commit({ [path]: { by: me, ts: firebase.database.ServerValue.TIMESTAMP } }, `re-checked "${s.name}" (${p.name})`, sid, 'check') });
+  } else {
+    commit({ [path]: { by: me, ts: firebase.database.ServerValue.TIMESTAMP } }, `checked off "${s.name}" (${p.name}) ✓`, sid, 'check');
+    const others = Object.entries(p.steps || {}).filter(([k]) => k !== sid);
+    const willComplete = others.length >= 0 && others.every(([, x]) => x.done);
+    if (willComplete) setTimeout(() => { confetti(); toast(`🎉 ${p.name} — project complete!`); commit({}, `finished the project "${p.name}" 🎉`); }, 400);
+    else toast(`✓ ${s.name}`, { label: 'Undo', fn: () => commit({ [path]: null }, `un-checked "${s.name}" (${p.name})`, sid, 'check') });
+  }
+}
+
 // ============================================================================
 //  Rendering — "Journal": a ledger kept by hand. Mono gutter on the left holds
 //  the time a thing was done (or its due marker / points), entries to the
@@ -897,7 +965,10 @@ const clock = s => { const m = /^(\d{1,2}):(\d{2})$/.exec(s || ''); if (!m) retu
 const hmAmpm = ts => ts ? new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
 function ago(ts) { if (!ts) return ''; const s = (Date.now() - ts) / 1000; if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s / 60)} min ago`; if (s < 86400) return `${Math.floor(s / 3600)} h ago`; return new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
 function agoShort(ts) { if (!ts) return ''; const s = (Date.now() - ts) / 1000; if (s < 60) return 'now'; if (s < 3600) return `${Math.floor(s / 60)}m`; if (s < 86400) return `${Math.floor(s / 3600)}h`; if (s < 6 * 86400) return DAYS[(new Date(ts).getDay() + 6) % 7]; return `${MONTHS[new Date(ts).getMonth()]} ${new Date(ts).getDate()}`; }
+let planMode = 'chores', openProject = null;
 const dotOf = i => i >= 0 && i !== 'rot' ? `<span class="dot p${i}"></span>` : '';
+const ckBox = (on, by, attrs, lockedBy, extra = '') => { const locked = lockedBy !== null && lockedBy !== undefined; return `<button class="ck ${on ? 'on p' + (by ?? 0) : ''} ${locked ? 'locked' : ''} ${extra}" ${attrs} aria-label="${on ? 'Done' : 'Mark done'}" ${locked ? 'title="Only ' + esc(state.people[lockedBy] ?? '') + ' can undo this"' : ''}>${on ? '✓' : ''}</button>`; };
+const doneWhen = ts => { if (!ts) return ''; const d = new Date(ts); return d.toDateString() === new Date().toDateString() ? 'at ' + hmAmpm(ts) : (Date.now() - ts < 6 * 864e5 ? DAYS[(d.getDay() + 6) % 7] + ' ' + hmAmpm(ts) : d.toLocaleDateString([], { month: 'short', day: 'numeric' })); };
 const gut = (b, s, cls = '') => `<div class="gut ${cls}"><b>${b}</b>${s ? `<span>${s}</span>` : ''}</div>`;
 const chk = (on, attrs, lockedBy, extraCls = '') => { const locked = lockedBy !== null && lockedBy !== undefined; return `<button class="chk ${on ? 'on' : ''} ${locked ? 'locked' : ''} ${extraCls}" ${attrs} aria-label="${on ? 'Done' : 'Mark done'}" ${locked ? 'title="Only ' + esc(state.people[lockedBy] ?? '') + ' can undo this"' : ''}></button>`; };
 const noteBtn = t => (t.notes || t.hasPhoto) ? `<button class="notebtn" data-note="${t.id}" title="${esc(t.notes || 'photo')}">${t.hasPhoto ? '📷' : NOTE_ICON}</button>` : '';
@@ -919,7 +990,7 @@ function render() {
   else if (view === 'insights') v.innerHTML = renderInsights();
   else if (view === 'house') v.innerHTML = renderHouse();
   else v.innerHTML = renderToday();
-  const fab = $('fab'); fab.classList.toggle('hidden', view !== 'plan'); fab.onclick = view === 'plan' ? () => openAddTask() : null;
+  const fab = $('fab'); fab.classList.toggle('hidden', view !== 'plan'); fab.onclick = view !== 'plan' ? null : (openProject && (state.projects || {})[openProject] ? () => openStepSheet(openProject, null) : (planMode === 'projects' ? openNewProjectSheet : () => openAddTask()));
   wire();
 }
 function pageHeader(title, meta, tools = '') { return `<div class="ph"><div><h1>${title}</h1><div class="d">${meta}</div></div>${tools ? `<div class="tools">${tools}</div>` : ''}</div>`; }
@@ -934,6 +1005,9 @@ function renderVoteBanner() {
 }
 function weekScores(ws, regularOnly = false) {
   const wk = weekIndex(ws); const key = weekKey(ws); const checks = state.allChecks[key] || {};
+  const w0 = ws.getTime(), w1 = w0 + 7 * 864e5;
+  const projWk = state.people.map(() => 0);
+  for (const p of Object.values(state.projects || {})) for (const s of Object.values(p.steps || {})) { const d = s.done; if (d && d.by !== undefined && projWk[d.by] !== undefined && d.ts >= w0 && d.ts < w1) projWk[d.by] += +s.pts || 1; }
   const active = state.tasks.filter(t => t.on && (!regularOnly || t.freq >= 1));
   const doneCount = t => Object.keys(checks[t.id] || {}).length;
   return state.people.map((p, i) => {
@@ -942,12 +1016,12 @@ function weekScores(ws, regularOnly = false) {
     const done = mine.reduce((a, t) => a + t.effort * Math.min(doneCount(t), targetFor(t)), 0);
     const bonus = mine.reduce((a, t) => a + t.effort * Math.max(0, doneCount(t) - targetFor(t)), 0);
     const perfect = mine.length > 0 && mine.filter(t => t.freq >= 1).every(t => doneCount(t) >= targetFor(t));
-    return { i, p, planned, done, bonus, pct: planned ? Math.round(done / planned * 100) : 0, n: mine.length, perfect };
+    return { i, p, planned, done, bonus, proj: projWk[i], pct: planned ? Math.round(done / planned * 100) : 0, n: mine.length, perfect };
   });
 }
 function weekSummary(ws) { return weekScores(ws, true); }
 function scoreCards(scores) {
-  return `<div class="cards">${scores.map(s => `<button class="sc ${ckPerson === s.i ? 'on' : ''}" data-i="${s.i}" aria-label="Show ${esc(s.p)}"><div class="nm"><span class="dot p${s.i}"></span><span class="grow" style="overflow:hidden;text-overflow:ellipsis">${esc(s.p)}</span>${state.presence[s.i] && s.i !== me ? '<span class="online" title="online"></span>' : ''}</div><div class="pct">${s.pct}%</div><div class="pts">${fmt(s.done)} / ${fmt(s.planned)} pts${s.bonus ? ` +${fmt(s.bonus)}` : ''}</div><div class="track"><div class="fill p${s.i}" style="width:${Math.min(100, s.pct)}%"></div></div></button>`).join('')}</div>`;
+  return `<div class="cards">${scores.map(s => `<button class="sc ${ckPerson === s.i ? 'on' : ''}" data-i="${s.i}" aria-label="Show ${esc(s.p)}"><div class="nm"><span class="dot p${s.i}"></span><span class="grow" style="overflow:hidden;text-overflow:ellipsis">${esc(s.p)}</span>${state.presence[s.i] && s.i !== me ? '<span class="online" title="online"></span>' : ''}</div><div class="pct">${s.pct}%</div><div class="pts">${fmt(s.done)} / ${fmt(s.planned)} pts${(s.bonus || 0) + (s.proj || 0) ? ` +${fmt((s.bonus || 0) + (s.proj || 0))}` : ''}</div><div class="track"><div class="fill p${s.i}" style="width:${Math.min(100, s.pct)}%"></div></div></button>`).join('')}</div>`;
 }
 function renderWrapCard() {
   if (ckWeekOffset !== 0) return ''; const dow = todayIdx(); if (dow > 2) return '';
@@ -984,7 +1058,7 @@ function renderTodayList(scores) {
   const isCat = t => catRe.test(t.name) && targetFor(t) >= 5;
   const pts = t => `${t.effort} pt${t.effort > 1 ? 's' : ''}`;
   const nameOf = i => i === me ? 'you' : esc(state.people[i] ?? '');
-  const ck = (on, by, attrs, lockedBy, extra = '') => { const locked = lockedBy !== null && lockedBy !== undefined; return `<button class="ck ${on ? 'on p' + (by ?? 0) : ''} ${locked ? 'locked' : ''} ${extra}" ${attrs} aria-label="${on ? 'Done' : 'Mark done'}" ${locked ? 'title="Only ' + esc(state.people[lockedBy] ?? '') + ' can undo this"' : ''}>${on ? '✓' : ''}</button>`; };
+  const ck = ckBox;
   const row = (cls, check, name, m, right, attrs = '', style = '') => `<div class="tr ${cls}" ${attrs} ${style ? `style="${style}"` : ''}>${check}<div class="t">${name}${m ? `<span class="m ${m[0]}">${m[1]}</span>` : ''}</div>${right ? `<div class="rt">${right}</div>` : ''}</div>`;
   let out = '';
   // --- Needs attention: house alerts (today / tomorrow) + overdue tasks that aren't yours ---
@@ -1048,6 +1122,27 @@ function renderTodayList(scores) {
     out += `<div class="bal"><span class="k">BAL</span><span>${fmt(s.done)} of ${fmt(s.planned)} pts this week${s.bonus ? ` · +${fmt(s.bonus)}` : ''}</span><b>${s.pct}%</b></div>`;
   }
   if (need.length) out += `<h3 class="g">As needed <span>${need.length}</span></h3>${sortRows(need).map(t => rowFor(t, 'need')).join('')}`;
+  // --- Projects: your steps + a few up-for-grabs, and anything ticked today ---
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const projGroups = Object.entries(state.projects || {}).map(([pid, p]) => { const st = projStats(p);
+    const undone = st.steps.filter(s => !s.done);
+    const show = [...undone.filter(s => s.who === ckPerson), ...undone.filter(s => s.who === -1)].slice(0, 3);
+    const doneToday = st.steps.filter(s => s.done && (s.done.ts || 0) >= t0.getTime());
+    const waiting = undone.filter(s => s.who === ckPerson || s.who === -1);
+    return { pid, p, st, show, doneToday, waiting };
+  }).filter(g => g.show.length || g.doneToday.length);
+  if (projGroups.length) {
+    const nAct = Object.values(state.projects || {}).filter(p => !projStats(p).complete).length;
+    out += `<h3 class="g">Projects <span>${nAct} active</span></h3>`;
+    let wait = 0, waitPts = 0;
+    out += projGroups.map(g => {
+      wait += g.waiting.length; waitPts += g.waiting.reduce((a, s) => a + s.pts, 0);
+      const done = g.doneToday.map(s => row('done', ckBox(true, s.done.by, `data-step="${s.id}" data-pid="${g.pid}"`, s.done.by !== me ? s.done.by : null), `${esc(s.name)}`, ['g', `Done at ${hmAmpm(s.done.ts)} · ${nameOf(s.done.by)} <span class="dim">· ${g.p.emoji || '📋'} ${esc(g.p.name)}</span>`], `${s.pts} pt${s.pts > 1 ? 's' : ''}`, `data-id="${s.id}"`)).join('');
+      const todo = g.show.map((s, i) => row('', ckBox(false, null, `data-step="${s.id}" data-pid="${g.pid}"`, null), `${esc(s.name)}`, ['dim', `${g.p.emoji || '📋'} ${esc(g.p.name)} · ${s.who === ckPerson ? (ckPerson === me ? 'yours' : 'theirs') : 'anyone'} · ${s.pts} pt${s.pts > 1 ? 's' : ''}`], i === 0 ? `${g.st.pct}%` : '', `data-id="${s.id}"`)).join('');
+      return done + todo;
+    }).join('');
+    out += `<div class="bal"><span class="k">PROJ</span><span>${wait ? `${wait} step${wait === 1 ? '' : 's'} waiting · <b>+${waitPts} pts</b> up for grabs` : 'all caught up'}</span><b></b></div>`;
+  }
   // --- We're out of ---
   const items = Object.entries(state.list).sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0));
   out += `<h3 class="g">We're out of <span>${items.length ? items.length + ' item' + (items.length === 1 ? '' : 's') : 'nothing right now'}</span></h3>${items.map(([id, it]) => row('', ck(false, null, `data-list="${id}"`, null, 'round'), esc(it.text), ['dim', `${dotOf(it.by)} ${esc(state.people[it.by] ?? '')} · ${ago(it.ts)}`], '')).join('')}
@@ -1078,6 +1173,101 @@ function renderWeekGrid(scores, ws) {
 
 // ---------- Plan ----------
 function renderPlan() {
+  if (openProject) { if ((state.projects || {})[openProject]) return renderProjectPage(openProject); openProject = null; }
+  if (planMode === 'projects') return renderProjectsList();
+  return renderChoresPlan();
+}
+const planSeg = () => `<div class="seg"><button class="${planMode === 'chores' ? 'on' : ''}" data-pm="chores">Chores</button><button class="${planMode === 'projects' ? 'on' : ''}" data-pm="projects">Projects</button></div>`;
+function projLeadLabel(p) { const l = whoRaw(p.lead); return l >= 0 ? `led by ${esc(state.people[l] ?? '')}` : 'everyone'; }
+function projCard(pid, p, st, sel) {
+  const due = dueInfo(p);
+  const meta = st.complete ? `completed ${new Date(st.finished).toLocaleDateString([], { month: 'short', day: 'numeric' })} · ${st.total} steps · ${st.earned} pts` : `${projLeadLabel(p)}${due ? ` · due ${due.label}` : ''}`;
+  const bar = `<div class="pbar">${Object.entries(st.by).sort((x, y) => x[0] - y[0]).map(([i, pts]) => `<i class="fill p${i}" style="width:${st.totPts ? pts / st.totPts * 100 : 0}%"></i>`).join('')}</div>`;
+  const byLine = Object.entries(st.by).sort((x, y) => y[1] - x[1]).map(([i, pts]) => `${esc(state.people[i] ?? '')} ${fmt(pts)}`).join(' · ');
+  const next = st.steps.filter(s => !s.done).slice(0, 3).map((s, i) => i === 0 ? `<b>${esc(s.name)}</b>` : esc(s.name)).join(' · ');
+  return `<button class="pc tap ${st.complete ? 'dim' : ''} ${sel ? 'on' : ''}" data-pid="${pid}">
+    <div class="hd"><div class="em">${p.emoji || '📋'}</div><div class="nm">${esc(p.name)}<small>${meta}</small></div><div class="pct ${st.complete ? 'ok' : ''}">${st.complete ? '✓' : st.pct + '%'}</div></div>
+    ${st.total ? bar : ''}
+    <div class="ft"><span>${st.complete ? byLine : `<b>${st.nDone} of ${st.total}</b> steps · ${fmt(st.earned)} pts earned`}</span><span>${st.complete ? '' : byLine}</span></div>
+    ${!st.complete && next ? `<div class="next">Next up: ${next}</div>` : ''}</button>`;
+}
+function renderProjectsList() {
+  const list = Object.entries(state.projects || {}).map(([id, p]) => ({ id, p, st: projStats(p) }));
+  const act = list.filter(x => !x.st.complete).sort((a, b) => (a.p.created || 0) - (b.p.created || 0));
+  const fin = list.filter(x => x.st.complete).sort((a, b) => (b.st.finished || 0) - (a.st.finished || 0));
+  const m0 = new Date(); m0.setDate(1); m0.setHours(0, 0, 0, 0);
+  let mn = 0, mp = 0;
+  for (const { p } of list) for (const s of Object.values(p.steps || {})) if (s.done && (s.done.ts || 0) >= m0.getTime()) { mn++; mp += +s.pts || 1; }
+  const cards = act.map(x => projCard(x.id, x.p, x.st)).join('') + fin.map(x => projCard(x.id, x.p, x.st)).join('');
+  return pageHeader('Plan', `${act.length} ACTIVE · ${fin.length} DONE`, planSeg()) + renderVoteBanner()
+    + (cards || `<div class="empty" style="padding:30px 10px">No projects yet.<br><span class="hint">A project is a one-time checklist the house works through together — a declutter, a spring deep clean, setting up a room. Steps earn points like chores do. Tap <b>+</b> to start one.</span></div>`)
+    + (mn ? `<div class="bal"><span class="k">MTH</span><span>done this month</span><b>${mn} steps · ${fmt(mp)} pts</b></div>` : '');
+}
+function renderProjectPage(pid) {
+  const p = state.projects[pid]; const st = projStats(p); const due = dueInfo(p);
+  const dueTxt = due ? ` · ${due.days < 0 ? `<span style="color:var(--late)">${-due.days}d overdue</span>` : due.days + 'd left'}` : '';
+  const meta = `${projLeadLabel(p)}${due ? ` · due ${due.label}` : ''}${st.complete ? ' · complete 🎉' : dueTxt}`;
+  const bar = `<div class="pbar" style="margin:2px 0 8px">${Object.entries(st.by).sort((x, y) => x[0] - y[0]).map(([i, pts]) => `<i class="fill p${i}" style="width:${st.totPts ? pts / st.totPts * 100 : 0}%"></i>`).join('')}</div>`;
+  const byLine = Object.entries(st.by).sort((x, y) => y[1] - x[1]).map(([i, pts]) => `${dotOf(+i)} ${esc(state.people[i] ?? '')} ${fmt(pts)}`).join(' ');
+  const head = `<div class="pc">${bar}<div class="ft"><span><b>${st.nDone} of ${st.total}</b> steps · ${fmt(st.earned)} of ${fmt(st.totPts)} pts</span><span>${byLine}</span></div></div>`;
+  const todo = st.steps.filter(s => !s.done);
+  const rows = todo.map((s, i) => `<div class="tr tap" data-sedit="${s.id}" data-id="${s.id}">${ckBox(false, null, `data-step="${s.id}" data-pid="${pid}"`, null)}<div class="t">${esc(s.name)}<span class="m dim">${s.who >= 0 ? `${esc(state.people[s.who] ?? '')}${dotOf(s.who)}` : 'anyone'} · ${s.pts} pt${s.pts > 1 ? 's' : ''}${s.notes ? ` · ${esc(s.notes)}` : ''}</span></div><div class="rt">${i === 0 ? 'up next' : ''}</div></div>`).join('');
+  const doneRows = st.steps.filter(s => s.done).sort((a, b) => (b.done.ts || 0) - (a.done.ts || 0)).map(s => `<div class="tr tap done" data-sedit="${s.id}" data-id="${s.id}">${ckBox(true, s.done.by, `data-step="${s.id}" data-pid="${pid}"`, s.done.by !== me ? s.done.by : null)}<div class="t">${esc(s.name)}<span class="m g">Done ${doneWhen(s.done.ts)} · ${s.done.by === me ? 'you' : esc(state.people[s.done.by] ?? '')}</span></div><div class="rt">${s.pts} pt${s.pts > 1 ? 's' : ''}</div></div>`).join('');
+  return pageHeader(`${p.emoji || '📋'} ${esc(p.name)}`, meta, `<button class="ib" id="projBack" aria-label="Back">‹</button><button class="ib" id="projMenu" aria-label="More">⋯</button>`)
+    + head + renderVoteBanner()
+    + (todo.length ? `<h3 class="g">To do <span>${todo.length} left</span></h3>${rows}` : (st.total ? `<div class="note" style="margin-top:12px">🎉 Every step is done. Add more below, or use ⋯ to remove the project once you're ready.</div>` : ''))
+    + (doneRows ? `<h3 class="g">Done <span>${st.nDone}</span></h3>${doneRows}` : '')
+    + (st.total ? `<div class="bal"><span class="k">BAL</span><span>${st.nDone} of ${st.total} · ${fmt(st.earned)} pts</span><b>${st.pct}%</b></div>` : '')
+    + `<div class="tr tap" id="addStepRow"><span class="ck dash" style="color:var(--ink-3);font-size:22px;font-weight:500;pointer-events:none">+</span><div class="t" style="color:var(--ink-4);font-weight:400">Add a step…</div></div>`;
+}
+function openNewProjectSheet() {
+  openModal('New project', `<input class="lineinput big" id="npName" placeholder="e.g. Declutter" aria-label="Project name">
+    <div class="grid2" style="margin-top:14px"><div class="field"><label>Emoji</label><input class="in" id="npEmoji" value="📋" maxlength="4"></div><div class="field"><label>Due (optional)</label><input class="in mono" id="npDue" type="date"></div></div>
+    <div class="grid2"><div class="field"><label>Led by</label><select class="in" id="npLead"><option value="-1">Everyone</option>${state.people.map((x, i) => `<option value="${i}">${esc(x)}</option>`).join('')}</select></div><div class="field"><label>Pts per step</label>${stepperHTML('npPts', 2)}</div></div>
+    <div class="field"><label>Steps — one per line (add & assign more later)</label><textarea id="npSteps" placeholder="Bedroom closet&#10;Entryway&#10;Linen closet…" style="min-height:110px"></textarea></div>
+    <div class="note">Steps show on Today for whoever they're assigned to (or everyone if "anyone"). Points go to whoever ticks the step. Finishing the last step completes the project 🎉</div>`,
+    [['Create project', () => { const name = $('npName').value.trim(); if (!name) { $('npName').focus(); return; }
+      const steps = $('npSteps').value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 60);
+      const id = createProject(name, $('npEmoji').value.trim(), $('npDue').value || null, $('npLead').value, stepperVal('npPts'), steps);
+      closeModal(); planMode = 'projects'; openProject = id; render(); window.scrollTo(0, 0); }, 'primary']]);
+  wireStepper('npPts'); setTimeout(() => $('npName')?.focus(), 60);
+}
+function openEditProject(pid) {
+  const p = state.projects[pid]; if (!p) return;
+  openModal('Edit project', `<input class="lineinput big" id="npName" value="${esc(p.name)}">
+    <div class="grid2" style="margin-top:14px"><div class="field"><label>Emoji</label><input class="in" id="npEmoji" value="${esc(p.emoji || '📋')}" maxlength="4"></div><div class="field"><label>Due (optional)</label><input class="in mono" id="npDue" type="date" value="${esc(p.due || '')}"></div></div>
+    <div class="field"><label>Led by</label><select class="in" id="npLead"><option value="-1" ${whoRaw(p.lead) === -1 ? 'selected' : ''}>Everyone</option>${state.people.map((x, i) => `<option value="${i}" ${whoRaw(p.lead) === i ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>`,
+    [['Save', () => { if (!state.projects[pid]) { closeModal(); return toast('That project was removed'); }
+      const name = $('npName').value.trim() || p.name;
+      updateProject(pid, { name, emoji: $('npEmoji').value.trim() || '📋', due: $('npDue').value || null, lead: whoRaw($('npLead').value) }, `updated the project "${name}"`);
+      closeModal(); }, 'primary']]);
+}
+function openProjectMenu(pid) {
+  const p = state.projects[pid]; if (!p) return;
+  openModal(p.name, `<div class="menu"><button class="btn" id="pmEdit">✏️ Edit project (name, emoji, due, lead)</button><button class="btn" id="pmStep">➕ Add a step</button><button class="btn danger" id="pmDel">🗑 Remove project…</button></div>`, []);
+  $('pmEdit').onclick = () => { closeModal(); openEditProject(pid); };
+  $('pmStep').onclick = () => { closeModal(); openStepSheet(pid, null); };
+  $('pmDel').onclick = () => { closeModal(); removeProject(pid); };
+}
+function openStepSheet(pid, sid) {
+  const p = state.projects[pid]; if (!p) return;
+  const s = sid ? projSteps(p).find(x => x.id === sid) : null; if (sid && !s) return;
+  openModal(s ? 'Edit step' : 'New step', `<input class="lineinput big" id="ssName" value="${s ? esc(s.name) : ''}" placeholder="e.g. Hall closet" aria-label="Step name">
+    <div class="grid2" style="margin-top:14px"><div class="field"><label>Points</label>${stepperHTML('ssPts', s ? Math.min(5, Math.max(1, s.pts)) : Math.min(5, Math.max(1, +p.defPts || 2)))}</div><div class="field"><label>Who</label><select class="in" id="ssWho"><option value="-1" ${!s || s.who === -1 ? 'selected' : ''}>Anyone</option>${state.people.map((x, i) => `<option value="${i}" ${s && s.who === i ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div></div>
+    <div class="field"><label>Note (optional)</label><input class="in" id="ssNotes" value="${s ? esc(s.notes || '') : ''}" placeholder="e.g. donate pile goes in the car"></div>
+    ${s ? `<div class="row" style="justify-content:flex-end"><button type="button" class="btn sm danger" id="ssRemove">Remove step…</button></div>` : ''}`,
+    [[s ? 'Save' : 'Add', () => { if (!state.projects[pid]) { closeModal(); return toast('That project was removed'); }
+      const name = $('ssName').value.trim(); if (!name) { $('ssName').focus(); return; }
+      const pts = stepperVal('ssPts'); const who = whoRaw($('ssWho').value); const notes = $('ssNotes').value.trim() || null;
+      closeModal();
+      if (!s) addStep(pid, name, pts, who, notes);
+      else if (name !== s.name || pts !== s.pts || who !== s.who || (notes || null) !== (s.notes || null)) updateStep(pid, sid, { name, pts, who, notes }, `updated "${name}" (${p.name})`);
+    }, 'primary']]);
+  wireStepper('ssPts');
+  const rm = $('ssRemove'); if (rm) rm.onclick = () => { closeModal(); removeStep(pid, sid); };
+  if (!s) setTimeout(() => $('ssName')?.focus(), 60);
+}
+function renderChoresPlan() {
   const { tot, unassigned, all } = totals(); const max = Math.max(...tot, 1); const wk = weekIndex(new Date());
   const rows = state.people.map((p, i) => `<div class="r"><b>${esc(p)}${state.presence[i] ? '<span class="online" title="online"></span>' : ''}</b><i style="--w:${tot[i] / max * 100}%;--c:var(--p${i})"></i><span>${fmt(tot[i])} · ${all ? Math.round(tot[i] / all * 100) : 0}%</span></div>`).join('');
   let verdict; const assigned = all - unassigned;
@@ -1104,7 +1294,7 @@ function renderPlan() {
     return `<h3 class="g">${CATS[key]} <span>${allCat.length} · ${fmt(catLoad)} pts</span></h3>${list || '<div class="empty">Nothing here</div>'}${boardFilter === 'all' ? `<div class="bal"><span class="k">SUB</span><span>${CATS[key]}</span><b>${fmt(catLoad)}</b></div>` : ''}`;
   }).join('');
   const balLine = `<div class="bal"><span class="k">BAL</span><span>${state.people.map((p, i) => `${esc(p)} <b>${fmt(tot[i])}</b>`).join(' · ')}</span><b>${assigned && (Math.max(...tot) - Math.min(...tot)) / (all / tot.length) <= .1 ? '✓' : ''}</b></div>`;
-  return pageHeader('Plan', `WEEK OF ${dshort(startOfWeek(new Date()))} · ${state.tasks.filter(t => t.on).length} TASKS`, `<button class="ib" id="btnMenu" aria-label="More">⋯</button>`)
+  return pageHeader('Plan', `WEEK OF ${dshort(startOfWeek(new Date()))} · ${state.tasks.filter(t => t.on).length} TASKS`, planSeg() + `<button class="ib" id="btnMenu" aria-label="More">⋯</button>`)
     + `<div class="pulse pin compact">${rows}<div class="cap">${verdict}</div></div>` + renderVoteBanner()
     + `<div class="tabs">${filters}</div>` + (sections || '<div class="empty">Nothing matches this filter</div>') + balLine
     + `<p class="hint" style="margin-top:14px">Weekly load = effort (1–5) × times per week. Tap a task to edit it; "Rotate" cycles a task between everyone each week.</p>`;
@@ -1182,6 +1372,7 @@ function renderInsights() {
 function renderLeaderboard(m0, m1) {
   const per = state.people.map((p, i) => ({ i, p, pts: 0, n: 0, byTask: {}, days: new Set() }));
   for (const [wk, tasks] of Object.entries(state.allChecks)) for (const [tid, ch] of Object.entries(tasks)) { const t = T(tid); for (const [d, c] of Object.entries(ch)) { if (!c || c.by === undefined || !per[c.by]) continue; const dt = checkDate(wk, +d); if (dt < m0 || dt >= m1) continue; const s = per[c.by]; s.pts += t ? t.effort : 1; s.n++; s.days.add(dkey(dt)); s.byTask[tid] = (s.byTask[tid] || 0) + 1; } }
+  for (const p of Object.values(state.projects || {})) for (const s of Object.values(p.steps || {})) { const d = s.done; if (!d || d.by === undefined || !per[d.by]) continue; const dt = new Date(d.ts || 0); if (dt < m0 || dt >= m1) continue; const x = per[d.by]; x.pts += +s.pts || 1; x.n++; x.days.add(dkey(dt)); }
   const ranked = [...per].sort((a, b) => b.pts - a.pts);
   const perfectWeeks = state.people.map(() => 0); const catCount = state.people.map(() => 0); const bestStreak = state.people.map((_, i) => personDayStreak(i).best);
   { const ws = startOfWeek(m0); const end = new Date(m1); while (ws < end) { if (state.allChecks[weekKey(ws)]) weekSummary(ws).forEach(x => { if (x.perfect) perfectWeeks[x.i]++; }); ws.setDate(ws.getDate() + 7); } }
@@ -1279,6 +1470,13 @@ function wire() {
   const mp = $('moPrev'); if (mp) mp.onclick = () => { statsMonthOffset--; render(); };
   const mn = $('moNext'); if (mn) mn.onclick = () => { if (statsMonthOffset < 0) { statsMonthOffset++; render(); } };
   const bm = $('btnMenu'); if (bm) bm.onclick = openPlanMenu;
+  v.querySelectorAll('.seg button[data-pm]').forEach(b => b.onclick = () => { planMode = b.dataset.pm; openProject = null; render(); });
+  v.querySelectorAll('.pc[data-pid]').forEach(el => el.onclick = () => { openProject = el.dataset.pid; render(); window.scrollTo(0, 0); });
+  const pjb = $('projBack'); if (pjb) pjb.onclick = () => { openProject = null; render(); };
+  const pjm = $('projMenu'); if (pjm) pjm.onclick = () => openProjectMenu(openProject);
+  v.querySelectorAll('.ck[data-step]').forEach(el => el.onclick = () => toggleStep(el.dataset.pid, el.dataset.step));
+  v.querySelectorAll('.tr[data-sedit]').forEach(el => el.onclick = e => { if (e.target.closest('.ck')) return; openStepSheet(openProject, el.dataset.sedit); });
+  const asr = $('addStepRow'); if (asr) asr.onclick = () => openStepSheet(openProject, null);
   v.querySelectorAll('.vote-yes').forEach(b => b.onclick = () => castVote(b.dataset.k, true));
   v.querySelectorAll('.vote-no').forEach(b => b.onclick = () => castVote(b.dataset.k, false));
   const wc = $('wrapClose'); if (wc) wc.onclick = () => { try { const last = startOfWeek(new Date()); last.setDate(last.getDate() - 7); localStorage.setItem('wrap-dismissed', weekKey(last)); } catch {} render(); };
