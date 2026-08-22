@@ -678,7 +678,7 @@ function boot() {
   root.child('colors').on('value', s => { const v = s.val() || {}; state.colors = DEFAULT_COLORS.map((c, i) => v[i] || c); applyColors(state.colors); if (view === 'house') render(); });
   root.child('prefs/' + me).on('value', s => { state.prefs = s.val() || {}; const t = state.prefs.theme; if (t && t !== currentTheme) applyTheme(t); if (view === 'house') render(); });
   // keep the push token fresh on devices where reminders are already on
-  setTimeout(() => { const r = myReminders(); if ((r.daily || r.wrap) && 'Notification' in window && Notification.permission === 'granted') registerPush(false); }, 3000);
+  setTimeout(() => { const r = myReminders(); if ((r.daily || r.wrap || r.activity) && 'Notification' in window && Notification.permission === 'granted') registerPush(false); }, 3000);
   try { firebase.messaging().onMessage(p => { const n = (p && (p.notification || p.data)) || {}; if (n.title || n.body) toast(`${n.title ? n.title + ': ' : ''}${n.body || ''}`); }); } catch {}
   root.child('log').orderByChild('ts').limitToLast(150).on('value', s => { feed = []; s.forEach(c => { feed.push({ id: c.key, ...c.val() }); }); feed.reverse(); if (view === 'insights') render(); });
   root.child('log').orderByChild('ts').limitToLast(1).on('child_added', s => { const e = s.val(); if (e && e.taskId && e.by !== me && Date.now() - (e.ts || 0) < 15000) flash(e.taskId); });
@@ -860,7 +860,7 @@ async function registerPush(interactive) {
 function myReminders() { return (state.prefs && state.prefs.reminders) || {}; }
 async function setReminders(patch) {
   const cur = { daily: false, time: '18:00', wrap: true, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, ...myReminders(), ...patch, tz: Intl.DateTimeFormat().resolvedOptions().timeZone };
-  if ((cur.daily || cur.wrap) && !(await registerPush(true))) { cur.daily = false; cur.wrap = false; }
+  if ((cur.daily || cur.wrap || cur.activity) && !(await registerPush(true))) { cur.daily = false; cur.wrap = false; cur.activity = false; }
   await root.child(`prefs/${me}/reminders`).set(cur); render();
 }
 async function testNotification() {
@@ -1416,7 +1416,7 @@ function renderHouse() {
       <form class="add-member" data-i="${i}"><input type="email" placeholder="Add a Google email for ${esc(p)}" required><button class="btn sm" type="submit">Add</button></form>
     </div></div>`;
   }).join('');
-  const r = { daily: false, time: '18:00', wrap: true, ...myReminders() }; const sup = pushSupport();
+  const r = { daily: false, time: '18:00', wrap: true, activity: false, ...myReminders() }; const sup = pushSupport();
   const tokens = Object.keys((state.prefs && state.prefs.push) || {}).length; const perm = ('Notification' in window) ? Notification.permission : 'unsupported';
   const mineAl = (state.prefs && state.prefs.alerts) || {};
   const alertRows = Object.entries(state.alerts).sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0)).map(([id, a]) => `<div class="jl">${gut(DAYS[a.dow].toUpperCase(), clock(a.time))}<div class="t">${a.emoji || '🔔'} ${esc(a.name)}${a.note ? `<span class="m">${esc(a.note)}</span>` : ''}</div><div class="rt"><label class="row" style="gap:5px"><span class="hint">notify</span><input type="checkbox" class="toggle alert-sub" data-id="${id}" ${mineAl[id] ? 'checked' : ''} ${sup.ok ? '' : 'disabled'}></label><button class="notebtn rm-alert" data-id="${id}" title="Remove" style="font-size:17px">×</button></div></div>`).join('');
@@ -1429,6 +1429,7 @@ function renderHouse() {
       <label class="kv"><span class="k">Daily nudge<span class="m">A short push with what's still open for you — only if something's left.</span></span><input type="checkbox" class="toggle" id="remDaily" ${r.daily ? 'checked' : ''} ${sup.ok ? '' : 'disabled'}></label>
       <div class="kv"><span class="k">Nudge me at</span><input type="time" id="remTime" class="in mono" value="${esc(r.time)}" ${sup.ok ? '' : 'disabled'} style="width:auto"></div>
       <label class="kv"><span class="k">Weekly wrap-up<span class="m">Monday morning: last week's scores and this week's rotation.</span></span><input type="checkbox" class="toggle" id="remWrap" ${r.wrap ? 'checked' : ''} ${sup.ok ? '' : 'disabled'}></label>
+      <label class="kv"><span class="k">Live activity<span class="m">A ping when a housemate checks something off — chores, cats, alerts, project steps. Arrives within a few minutes, batched.</span></span><input type="checkbox" class="toggle" id="remActivity" ${r.activity ? 'checked' : ''} ${sup.ok ? '' : 'disabled'}></label>
       <div class="kv"><span class="k">Test it<span class="m">Sends a notification to this device.</span></span><button class="btn sm" id="remTest" ${sup.ok ? '' : 'disabled'}>Send test</button></div>`
     + `<h3 class="g">House alerts <span>${Object.keys(state.alerts).length}</span></h3>${alertRows || '<div class="empty">No alerts yet</div>'}
       <form id="alertForm" style="margin-top:8px"><div class="form-row"><input class="in" type="text" name="name" placeholder="New alert, e.g. Trash cans to the curb" required><button class="btn" type="submit">Add</button></div><div class="row wrap" style="gap:8px"><select name="dow" class="in" style="width:auto">${DAYS.map((d, i) => `<option value="${i}" ${i === 3 ? 'selected' : ''}>${d}</option>`).join('')}</select><input type="time" name="time" class="in mono" value="18:00" style="width:auto"><input class="in grow" type="text" name="note" placeholder="note (optional)" style="width:auto"></div></form>
@@ -1491,6 +1492,7 @@ function wire() {
   const rd = $('remDaily'); if (rd) rd.onchange = e => setReminders({ daily: e.target.checked });
   const rt = $('remTime'); if (rt) rt.onchange = e => setReminders({ time: e.target.value || '18:00' });
   const rw = $('remWrap'); if (rw) rw.onchange = e => setReminders({ wrap: e.target.checked });
+  const ra = $('remActivity'); if (ra) ra.onchange = e => setReminders({ activity: e.target.checked });
   const rtst = $('remTest'); if (rtst) rtst.onclick = testNotification;
   v.querySelectorAll('.alert-sub').forEach(el => el.onchange = e => toggleAlertSub(el.dataset.id, e.target.checked));
   v.querySelectorAll('.rm-alert').forEach(b => b.onclick = () => removeAlert(b.dataset.id));
