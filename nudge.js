@@ -1,5 +1,5 @@
 // Scheduled reminders for the household chore board.
-// Runs from GitHub Actions every ~20 minutes with the Firebase service account.
+// Runs from GitHub Actions every ~5 minutes with the Firebase service account.
 // - Daily nudge: at each person's chosen local time, a push with what's still open today.
 // - Weekly wrap-up: Monday morning (local), last week's scores + this week's rotation.
 // Nothing here is user-facing HTML; it only reads the database and calls FCM.
@@ -114,6 +114,7 @@ async function runHouse(HOUSE, house) {
     }
 
     // ---- weekly wrap-up (Monday, 8:00–12:00 local, once) ----
+    // (live activity pings are handled once per house, after this loop)
     if (r.wrap !== false && lp.dow === 0 && lp.minutes >= 8 * 60 && lp.minutes < 12 * 60 && !(wrapped[slot] && wrapped[slot][wkKey])) {
       const last = new Date(wkStart); last.setUTCDate(last.getUTCDate() - 7); const lastKey = keyOf(last); const lastWk = weekIndexOf(last);
       const lastChecks = checks[lastKey] || {};
@@ -132,6 +133,37 @@ async function runHouse(HOUSE, house) {
         }
       } else {
         await dbPatch(`${HOUSE}/wrapped/${slot}/${wkKey}`, { ts: Date.now(), skipped: true });
+      }
+    }
+  }
+
+  // ---- live activity pings (opt-in): "Jason checked off Tidy living room" ----
+  // Batched: each run sends everything new since the last run to people who turned
+  // "Live activity" on. Only positive actions — check-offs, alerts done, project
+  // steps, finished projects. Never your own actions back at you.
+  const recips = [];
+  for (let slot = 0; slot < N; slot++) { const p = prefs[slot]; if (p && p.reminders && p.reminders.activity && p.push && Object.keys(p.push).length) recips.push(slot); }
+  if (recips.length) {
+    const cur = (house.meta && house.meta.actTs) || 0;
+    const floor = Math.max(cur, Date.now() - 45 * 60000); // never flood with a stale backlog
+    const events = Object.values(house.log || {})
+      .filter(e => e && typeof e.ts === 'number' && e.ts > floor && e.by !== undefined && e.by !== null && people[e.by] !== undefined
+        && (e.kind === 'check' || /^(took care of|finished the project)/.test(e.text || ''))
+        && !/^(un-checked|un-did|re-checked)/.test(e.text || ''))
+      .sort((a, b) => a.ts - b.ts).slice(-8);
+    if (events.length) {
+      await dbPatch(`${HOUSE}/meta`, { actTs: Math.max(...events.map(e => e.ts)) });
+      const clean = t => String(t || '').replace(/ ✓$/, '').replace(/ — (Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/, '').replace(/"/g, '');
+      for (const slot of recips) {
+        const forMe = events.filter(e => e.by !== slot);
+        if (!forMe.length) continue;
+        const items = forMe.map(e => `${e.name} ${clean(e.text)}`);
+        let title, body;
+        if (items.length === 1) { title = items[0].length > 64 ? items[0].slice(0, 63) + '…' : items[0]; body = house.name || 'Household Chores'; }
+        else { title = `${house.name || 'Household Chores'} — ${items.length} updates`; body = items.join(' · '); if (body.length > 220) body = body.slice(0, 217) + '…'; }
+        let ok = false;
+        for (const [k, v] of Object.entries(prefs[slot].push || {})) { const res = await sendPush(v.token, { title, body, url: APP_URL, tag: 'activity' }); if (res === 'gone') await dbDelete(`${HOUSE}/prefs/${slot}/push/${k}`); if (res === 'ok') ok = true; }
+        if (ok) sent++;
       }
     }
   }
